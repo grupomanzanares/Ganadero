@@ -1,164 +1,202 @@
 <?php
 // ============================================================
-// login.php — Inicio de sesión
+// login.php — Inicio de sesión (responsive)
 // ============================================================
 require_once __DIR__ . '/bootstrap.php';
 
-// Si ya está autenticado, redirigir
 if (Auth::check()) {
     header('Location: ' . APP_URL . '/index.php');
     exit;
 }
-
-$error = '';
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="theme-color" content="#1e293b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <title>Iniciar sesión — GanaderoPro</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            tierra: { 50:'#fdf8f0',100:'#f5e6c8',200:'#e8c98a',300:'#d4a843',
-                      400:'#b88930',500:'#8b6320',600:'#6b4c18',700:'#523b12',
-                      800:'#3a2a0c',900:'#231908' },
-            verde:  { 400:'#4d9038',500:'#3a7229',600:'#2a561e',700:'#1e4015' }
-          },
-          fontFamily: {
-            display: ['Fraunces','Georgia','serif'],
-            body:    ['DM Sans','system-ui','sans-serif'],
-          }
+      theme: { extend: {
+        colors: {
+          esm:  { 50:'#ecfdf5',100:'#d1fae5',500:'#10b981',600:'#059669',700:'#047857' },
+          slate:{ 50:'#f8fafc',100:'#f1f5f9',200:'#e2e8f0',400:'#94a3b8',600:'#475569',700:'#334155',800:'#1e293b',900:'#0f172a' }
+        },
+        fontFamily: {
+          display: ['Fraunces','Georgia','serif'],
+          body:    ['DM Sans','system-ui','sans-serif'],
         }
-      }
+      }}
     }
   </script>
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
-    body { font-family:'DM Sans',system-ui,sans-serif; }
+    * { box-sizing: border-box; }
+    body { font-family:'DM Sans',system-ui,sans-serif; margin:0; min-height:100vh;
+           background:linear-gradient(135deg,#0f172a 0%,#1e293b 50%,#0f2417 100%); }
     h1,h2 { font-family:'Fraunces',Georgia,serif; }
-    .input-login {
-      width:100%; padding:.6rem .875rem;
-      border:1px solid #e8c98a; border-radius:.375rem;
-      font-size:.9rem; outline:none; transition:.15s;
-      background:#fdf8f0;
+
+    .login-card {
+      background:#fff; border-radius:1rem;
+      box-shadow:0 25px 60px rgba(0,0,0,.35);
+      overflow:hidden; width:100%; max-width:400px;
     }
-    .input-login:focus {
-      border-color:#4d9038; background:#fff;
-      box-shadow:0 0 0 3px rgba(77,144,56,.12);
+    .login-header {
+      background:linear-gradient(135deg,#1e293b,#0f172a);
+      padding:2rem; text-align:center;
     }
-    .bg-pattern {
-      background-image:
-        radial-gradient(circle at 20% 20%, rgba(74,144,56,.08) 0%, transparent 50%),
-        radial-gradient(circle at 80% 80%, rgba(58,42,12,.06) 0%, transparent 50%);
+    .login-body { padding:1.5rem; }
+    @media(min-width:480px) { .login-body { padding:2rem; } }
+
+    .inp {
+      width:100%; padding:.75rem 1rem;
+      border:1.5px solid #e2e8f0; border-radius:.5rem;
+      font-size:16px;   /* 16px previene zoom en iOS */
+      outline:none; transition:.15s; color:#0f172a; background:#f8fafc;
     }
+    .inp:focus { border-color:#059669; background:#fff; box-shadow:0 0 0 3px rgba(5,150,105,.12); }
+    .inp::placeholder { color:#94a3b8; }
+
+    .btn-login {
+      width:100%; padding:.875rem; border-radius:.5rem;
+      background:linear-gradient(135deg,#059669,#047857);
+      color:#fff; font-size:1rem; font-weight:600;
+      border:none; cursor:pointer; transition:.2s;
+      box-shadow:0 4px 14px rgba(5,150,105,.35);
+    }
+    .btn-login:hover { transform:translateY(-1px); box-shadow:0 6px 20px rgba(5,150,105,.4); }
+    .btn-login:active { transform:translateY(0); }
+    .btn-login:disabled { opacity:.6; cursor:not-allowed; transform:none; }
   </style>
 </head>
-<body class="bg-tierra-50 bg-pattern min-h-screen flex items-center justify-center px-4">
+<body class="flex items-center justify-center min-h-screen p-4">
 
-  <div class="w-full max-w-sm">
+  <div class="login-card">
 
-    <!-- Logo / Marca -->
-    <div class="text-center mb-8">
-      <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl
-                  bg-tierra-800 shadow-lg mb-4">
-        <span class="text-3xl">🐄</span>
+    <!-- Cabecera -->
+    <div class="login-header">
+      <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl
+                  bg-esm-600 bg-opacity-20 border border-white border-opacity-10 mb-4">
+        <span style="font-size:2rem">🐄</span>
       </div>
-      <h1 class="text-tierra-800 text-2xl font-bold font-display">GanaderoPro</h1>
-      <p class="text-tierra-400 text-sm mt-1">Sistema de gestión ganadera</p>
+      <h1 class="text-white text-2xl font-bold mb-1">Ganadero</h1>
+      <p class="text-slate-400 text-sm">Sistema de gestión ganadera</p>
     </div>
 
-    <!-- Card de login -->
-    <div class="bg-white rounded-xl shadow-sm border border-tierra-100 p-8">
-      <h2 class="text-tierra-800 text-lg font-semibold font-display mb-6">Iniciar sesión</h2>
+    <!-- Formulario -->
+    <div class="login-body">
+      <h2 class="text-slate-800 text-lg font-semibold mb-5">Iniciar sesión</h2>
 
-      <div id="msg-error" class="hidden mb-4 p-3 bg-red-50 border border-red-200
-           rounded-lg text-red-700 text-sm"></div>
+      <div id="msg-error"
+           class="hidden mb-4 p-3 rounded-lg text-sm font-medium"
+           style="background:#fef2f2;border:1px solid #fecaca;color:#dc2626"></div>
 
-      <div class="space-y-4">
+      <div style="display:flex;flex-direction:column;gap:1rem">
         <div>
-          <label class="block text-tierra-600 text-xs font-medium mb-1.5 uppercase tracking-wide">
+          <label class="form-label" style="display:block;font-size:.8rem;font-weight:600;color:#475569;margin-bottom:.4rem;text-transform:uppercase;letter-spacing:.05em">
             Correo electrónico
           </label>
-          <input type="email" id="email" placeholder="usuario@empresa.com"
-                 class="input-login" autocomplete="email">
+          <input type="email" id="email" class="inp"
+                 placeholder="usuario@empresa.com"
+                 autocomplete="email" inputmode="email">
         </div>
         <div>
-          <label class="block text-tierra-600 text-xs font-medium mb-1.5 uppercase tracking-wide">
+          <label class="form-label" style="display:block;font-size:.8rem;font-weight:600;color:#475569;margin-bottom:.4rem;text-transform:uppercase;letter-spacing:.05em">
             Contraseña
           </label>
-          <input type="password" id="password" placeholder="••••••••"
-                 class="input-login" autocomplete="current-password">
+          <div style="position:relative">
+            <input type="password" id="password" class="inp"
+                   placeholder="••••••••"
+                   autocomplete="current-password"
+                   style="padding-right:3rem">
+            <button type="button" id="btn-toggle-pwd"
+                    onclick="togglePwd()"
+                    style="position:absolute;right:.75rem;top:50%;transform:translateY(-50%);
+                           background:none;border:none;cursor:pointer;color:#94a3b8;
+                           padding:.25rem;display:flex;align-items:center">
+              <svg id="ico-eye" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+              </svg>
+            </button>
+          </div>
         </div>
-        <button id="btn-login"
-                class="w-full py-2.5 bg-verde-600 hover:bg-verde-700 text-white
-                       rounded-lg font-medium text-sm transition-colors mt-2">
-          Ingresar al sistema
+        <button id="btn-login" class="btn-login" onclick="doLogin()">
+          Ingresar
         </button>
       </div>
-    </div>
 
-    <p class="text-center text-tierra-400 text-xs mt-6">
-      GanaderoPro &copy; <?= date('Y') ?>
-    </p>
+      <p class="text-center text-slate-400 text-xs mt-6">
+        Ganadero &copy; <?= date('Y') ?>
+      </p>
+    </div>
   </div>
 
 <script>
-  // Usar ruta relativa para evitar conflictos http vs https
-  const API_URL = '/ganadero/api/auth.php';
+const API_URL = '/ganadero/api/auth.php';
 
-  document.getElementById('password')
-    .addEventListener('keypress', e => { if (e.key === 'Enter') doLogin(); });
-  document.getElementById('btn-login')
-    .addEventListener('click', doLogin);
+// Mostrar/ocultar contraseña
+function togglePwd() {
+  const inp = document.getElementById('password');
+  inp.type  = inp.type === 'password' ? 'text' : 'password';
+}
 
-  async function doLogin() {
-    const email    = document.getElementById('email').value.trim();
-    const password = document.getElementById('password').value;
-    const errEl    = document.getElementById('msg-error');
-    const btn      = document.getElementById('btn-login');
+// Enter en el campo de contraseña
+document.getElementById('password').addEventListener('keypress', e => {
+  if (e.key === 'Enter') doLogin();
+});
+document.getElementById('email').addEventListener('keypress', e => {
+  if (e.key === 'Enter') document.getElementById('password').focus();
+});
 
-    errEl.classList.add('hidden');
+async function doLogin() {
+  const email    = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  const errEl    = document.getElementById('msg-error');
+  const btn      = document.getElementById('btn-login');
 
-    if (!email || !password) {
-      errEl.textContent = 'Ingrese su correo y contraseña.';
-      errEl.classList.remove('hidden');
-      return;
-    }
+  errEl.classList.add('hidden');
 
-    btn.disabled    = true;
-    btn.textContent = 'Verificando...';
+  if (!email || !password) {
+    errEl.textContent = 'Ingrese su correo y contraseña.';
+    errEl.classList.remove('hidden');
+    return;
+  }
 
-    try {
-      const res  = await fetch(API_URL, {
-        method:      'POST',
-        headers:     { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body:        JSON.stringify({ email, password }),
-      });
-      const data = await res.json();
+  btn.disabled    = true;
+  btn.textContent = 'Verificando...';
 
-      if (res.ok && data.success) {
-        btn.textContent = '✓ Acceso concedido';
-        window.location.href = '/ganadero/index.php';
-      } else {
-        errEl.textContent = data.message || 'Credenciales inválidas.';
-        errEl.classList.remove('hidden');
-        btn.disabled    = false;
-        btn.textContent = 'Ingresar al sistema';
-      }
-    } catch (err) {
-      console.error('Error login:', err);
-      errEl.textContent = 'Error de conexión. Intente de nuevo.';
+  try {
+    const res  = await fetch(API_URL, {
+      method:      'POST',
+      headers:     { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body:        JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+
+    if (res.ok && data.success) {
+      btn.textContent = '✓ Acceso concedido';
+      window.location.href = '/ganadero/index.php';
+    } else {
+      errEl.textContent = data.message || 'Credenciales inválidas.';
       errEl.classList.remove('hidden');
       btn.disabled    = false;
-      btn.textContent = 'Ingresar al sistema';
+      btn.textContent = 'Ingresar';
     }
+  } catch (err) {
+    console.error('Error login:', err);
+    errEl.textContent = 'Error de conexión. Intente de nuevo.';
+    errEl.classList.remove('hidden');
+    btn.disabled    = false;
+    btn.textContent = 'Ingresar';
   }
+}
 </script>
 </body>
 </html>
