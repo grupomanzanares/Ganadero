@@ -33,7 +33,7 @@ ini_set('session.use_strict_mode', 1);
 session_name('GANADERO_SESS');
 
 // Manejo de errores (cambiar a false en producción)
-define('DEBUG_MODE', true);
+define('DEBUG_MODE', FALSE);
 
 if (DEBUG_MODE) {
     ini_set('display_errors', 1);

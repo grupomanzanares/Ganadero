@@ -1,491 +1,703 @@
 <?php
 // ============================================================
-// reportes/socios.php — Reporte consolidado por socio
+// reportes/socios.php — Reporte profesional por socio
 // ============================================================
 require_once __DIR__ . '/../bootstrap.php';
 Auth::requirePermission('reportes', 'ver');
-
 $pageTitle = 'Reporte por socio';
 $modulo    = 'reporte_socios';
 require_once __DIR__ . '/../views/layout/header.php';
 ?>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+
 <style>
+/* ── Filtros ── */
+.filtros { background:#fff; border:1px solid #e2e8f0; border-radius:.75rem;
+           padding:1rem 1.25rem; margin-bottom:1.25rem;
+           display:flex; flex-wrap:wrap; gap:.75rem; align-items:flex-end; }
+/* ── KPI ── */
 .kpi { background:#fff; border:1px solid #e2e8f0; border-radius:.625rem;
-       padding:1.25rem 1.5rem; position:relative; overflow:hidden; }
-.kpi-accent { position:absolute; top:0; left:0; width:4px; height:100%; border-radius:2px 0 0 2px; }
-.kpi-value  { font-family:'Fraunces',Georgia,serif; font-size:1.75rem; font-weight:700; line-height:1; }
-.kpi-label  { font-size:.7rem; text-transform:uppercase; letter-spacing:.06em; color:#64748b; margin-top:.25rem; }
-.kpi-sub    { font-size:.75rem; color:#94a3b8; margin-top:.2rem; }
-
-.seccion { background:#fff; border:1px solid #e2e8f0; border-radius:.625rem;
-           box-shadow:0 1px 4px rgba(15,23,42,.04); overflow:hidden; }
-.seccion-header { padding:.875rem 1.25rem; border-bottom:1px solid #f1f5f9;
-                  background:#f8fafc; display:flex; align-items:center; justify-content:space-between; }
-.seccion-title  { font-size:.8125rem; font-weight:600; color:#334155; text-transform:uppercase;
-                  letter-spacing:.05em; }
-.seccion-body   { padding:1.25rem; }
-
-.barra-container { background:#f1f5f9; border-radius:999px; height:8px; overflow:hidden; }
-.barra-fill      { height:100%; border-radius:999px; transition:width .6s ease; }
-
+       padding:1.125rem 1.25rem; position:relative; overflow:hidden; }
+.kpi::before { content:''; position:absolute; top:0; left:0; width:3px; height:100%;
+               border-radius:2px 0 0 2px; background:var(--ac,#059669); }
+.kpi-lbl { font-size:.68rem; text-transform:uppercase; letter-spacing:.07em; color:#64748b; }
+.kpi-val { font-family:'Fraunces',Georgia,serif; font-size:1.55rem; font-weight:700;
+           line-height:1.15; color:var(--ac,#059669); }
+.kpi-sub { font-size:.71rem; color:#94a3b8; margin-top:.2rem; }
+.prog    { background:#f1f5f9; border-radius:999px; height:5px; margin-top:.4rem; overflow:hidden; }
+.prog-f  { height:100%; border-radius:999px; background:var(--ac,#059669); transition:width .5s; }
+/* ── Gráfico card ── */
+.gc { background:#fff; border:1px solid #e2e8f0; border-radius:.625rem;
+      padding:1.125rem 1.25rem; }
+.gc-t { font-size:.72rem; font-weight:700; text-transform:uppercase;
+        letter-spacing:.06em; color:#475569; margin-bottom:.875rem; }
+/* ── Tabla ── */
+.tr th { background:#1e293b; color:#e2e8f0; padding:.6rem .875rem;
+         font-size:.68rem; font-weight:600; letter-spacing:.05em; text-transform:uppercase; }
+.tr td { padding:.55rem .875rem; font-size:.8rem; color:#334155;
+         border-bottom:1px solid #f1f5f9; }
+.tr tr:hover td { background:#f8fafc; }
+.tr tfoot td { background:#f1f5f9; font-weight:700; font-size:.78rem;
+               color:#1e293b; padding:.65rem .875rem; }
+/* ── Badge ── */
+.b { display:inline-block; padding:.1rem .5rem; border-radius:999px;
+     font-size:.67rem; font-weight:600; }
+.b-g  { background:#d1fae5; color:#065f46; }
+.b-s  { background:#f1f5f9; color:#475569; }
+.b-r  { background:#fee2e2; color:#991b1b; }
 @media print {
-  aside, header, .no-print, #selector-socio-card { display:none !important; }
-  .ml-64 { margin-left:0 !important; }
-  body { background:#fff !important; }
-  .kpi, .seccion { box-shadow:none !important; break-inside:avoid; }
+  aside,header,.no-print { display:none!important; }
+  .ml-64 { margin-left:0!important; }
 }
 </style>
 
-<!-- Selector de socio -->
-<div id="selector-socio-card" class="card mb-6">
-  <div class="flex flex-wrap gap-4 items-end">
-    <div class="flex-1 min-w-48">
-      <label class="form-label">Seleccionar socio</label>
-      <select id="sel-socio" class="input-base">
-        <option value="">Cargando socios...</option>
-      </select>
-    </div>
-    <button onclick="cargarReporte()" class="btn btn-verde no-print">
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-          d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10"/>
-      </svg>
-      Ver reporte
-    </button>
-    <button onclick="window.print()" class="btn btn-outline no-print">
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-          d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
-      </svg>
-      Imprimir
-    </button>
+<!-- ══ FILTROS ═══════════════════════════════════════════════ -->
+<div class="filtros no-print">
+  <div>
+    <label class="form-label">Socio</label>
+    <select id="f-socio" class="input-base w-56"><option value="">Cargando...</option></select>
   </div>
+  <div>
+    <label class="form-label">Desde</label>
+    <input type="date" id="f-desde" class="input-base w-36" value="<?= date('Y-01-01') ?>">
+  </div>
+  <div>
+    <label class="form-label">Hasta</label>
+    <input type="date" id="f-hasta" class="input-base w-36" value="<?= date('Y-m-d') ?>">
+  </div>
+  <div>
+    <label class="form-label">Estado</label>
+    <select id="f-estado" class="input-base w-36">
+      <option value="">Todos</option>
+      <option value="abierto">Abiertos</option>
+      <option value="cerrado">Cerrados</option>
+    </select>
+  </div>
+  <button onclick="generar()" class="btn btn-verde">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+        d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10"/>
+    </svg>
+    Generar reporte
+  </button>
+  <button onclick="window.print()" class="btn btn-outline">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+        d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+    </svg>
+    Imprimir
+  </button>
+  <button onclick="exportarCSV()" class="btn btn-outline">↓ CSV</button>
 </div>
 
-<!-- Contenido del reporte (se llena por JS) -->
-<div id="reporte-contenido" class="hidden space-y-6">
-
-  <!-- Cabecera del socio -->
-  <div id="socio-header" class="card"></div>
-
-  <!-- KPIs de animales -->
-  <div>
-    <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">
-      📦 Posición en animales
-    </h3>
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4" id="kpis-animales"></div>
-  </div>
-
-  <!-- KPIs financieros -->
-  <div>
-    <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">
-      💰 Posición financiera
-    </h3>
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4" id="kpis-financiero"></div>
-  </div>
-
-  <!-- Contratos activos -->
-  <div class="seccion" id="seccion-contratos-activos">
-    <div class="seccion-header">
-      <span class="seccion-title">Contratos en curso (abiertos)</span>
-      <span id="badge-activos" class="text-xs bg-esm-100 text-esm-700 px-2 py-0.5 rounded-full font-semibold"></span>
-    </div>
-    <div class="overflow-x-auto">
-      <table class="tabla-base">
-        <thead>
-          <tr>
-            <th>Contrato</th>
-            <th>Tipo</th>
-            <th>Empresa</th>
-            <th class="text-center">Part.</th>
-            <th class="text-right">Animales socio</th>
-            <th class="text-right">Activos</th>
-            <th class="text-right">Vendidos</th>
-            <th class="text-right">Muertos</th>
-            <th class="text-right">Inversión socio</th>
-            <th class="text-right">Venta acum.</th>
-            <th class="text-right">Ganancia acum.</th>
-            <th>Estado</th>
-          </tr>
-        </thead>
-        <tbody id="tbody-contratos-activos"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- Tabla de animales activos -->
-  <div class="seccion">
-    <div class="seccion-header">
-      <span class="seccion-title">Animales activos del socio</span>
-      <span id="badge-anim-activos" class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold"></span>
-    </div>
-    <div class="overflow-x-auto">
-      <table class="tabla-base">
-        <thead>
-          <tr>
-            <th>Código</th>
-            <th>Contrato</th>
-            <th>Tipo</th>
-            <th class="text-right">Peso finca</th>
-            <th class="text-right">Costo compra</th>
-            <th class="text-right">Flete entrada</th>
-            <th class="text-right">Valor/kg</th>
-            <th>Fecha compra</th>
-          </tr>
-        </thead>
-        <tbody id="tbody-animales-activos"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- Ganancias por contrato cerrado -->
-  <div class="seccion" id="seccion-ganancias">
-    <div class="seccion-header">
-      <span class="seccion-title">Resultado por contrato cerrado</span>
-      <span id="badge-cerrados" class="text-xs bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full font-semibold"></span>
-    </div>
-    <div id="lista-ganancias" class="p-4 space-y-4"></div>
-  </div>
-
+<!-- ══ LOADER ═══════════════════════════════════════════════ -->
+<div id="loader" class="hidden text-center py-16">
+  <div class="inline-block w-10 h-10 border-2 border-slate-200 border-t-esm-500
+              rounded-full animate-spin mb-3"></div>
+  <p class="text-slate-400 text-sm">Generando reporte...</p>
 </div>
 
-<!-- Estado vacío -->
-<div id="reporte-vacio" class="card text-center py-16">
+<!-- ══ PLACEHOLDER ══════════════════════════════════════════ -->
+<div id="placeholder" class="card text-center py-16">
   <svg class="w-12 h-12 text-slate-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
       d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V19a2 2 0 01-2 2z"/>
   </svg>
-  <p class="text-slate-400 text-sm">Seleccione un socio para ver su reporte</p>
+  <p class="text-slate-400 text-sm">Seleccione un socio y haga clic en <strong>Generar reporte</strong></p>
+</div>
+
+<!-- ══ REPORTE ═══════════════════════════════════════════════ -->
+<div id="rp" class="hidden space-y-5">
+
+  <!-- Cabecera -->
+  <div id="rp-head" class="card"></div>
+
+  <!-- KPIs animales -->
+  <div>
+    <p class="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">📦 Posición en animales</p>
+    <div class="grid grid-cols-2 lg:grid-cols-5 gap-3" id="kpi-anim"></div>
+  </div>
+
+  <!-- KPIs financieros -->
+  <div>
+    <p class="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">💰 Posición financiera</p>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3" id="kpi-fin"></div>
+  </div>
+
+  <!-- Gráficos fila 1 -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <div class="gc">
+      <p class="gc-t">Estado de animales</p>
+      <canvas id="ch1" height="200"></canvas>
+      <div id="ch1-leg" class="flex justify-center gap-4 mt-3 text-xs text-slate-500 flex-wrap"></div>
+    </div>
+    <div class="gc lg:col-span-2">
+      <p class="gc-t">Resultado por contrato — ingresos vs costos vs ganancia</p>
+      <canvas id="ch2" height="160"></canvas>
+    </div>
+  </div>
+
+  <!-- Gráficos fila 2 -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <div class="gc lg:col-span-2">
+      <p class="gc-t">Evolución de ganancias (por cierre y acumulada)</p>
+      <canvas id="ch3" height="160"></canvas>
+    </div>
+    <div class="gc">
+      <p class="gc-t">Desglose de costos</p>
+      <canvas id="ch4" height="200"></canvas>
+    </div>
+  </div>
+
+  <!-- Gráficos fila 3 -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div class="gc">
+      <p class="gc-t">Animales por contrato (activos / vendidos / muertos)</p>
+      <canvas id="ch5" height="180"></canvas>
+    </div>
+    <div class="gc">
+      <p class="gc-t">Precio compra vs precio venta ($/kg)</p>
+      <canvas id="ch6" height="180"></canvas>
+    </div>
+  </div>
+
+  <!-- Tabla contratos -->
+  <div class="overflow-hidden rounded-xl border border-slate-200">
+    <div class="px-4 py-3 bg-slate-800 flex items-center justify-between">
+      <span class="text-sm font-semibold text-white">Detalle por contrato</span>
+      <span id="badge-con" class="text-xs bg-esm-700 text-white px-2 py-0.5 rounded-full"></span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="tr w-full">
+        <thead><tr>
+          <th>Contrato</th><th>Tipo</th><th>Fecha</th>
+          <th class="text-center">Part.</th>
+          <th class="text-right">Anim.</th>
+          <th class="text-right">Activos</th>
+          <th class="text-right">Vendidos</th>
+          <th class="text-right">Muertos</th>
+          <th class="text-right">Inversión</th>
+          <th class="text-right">Ingresos</th>
+          <th class="text-right">Ganancia</th>
+          <th class="text-right">Rentab.</th>
+          <th>Estado</th>
+        </tr></thead>
+        <tbody id="tb-con"></tbody>
+        <tfoot id="tf-con"></tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- Tabla animales activos -->
+  <div class="overflow-hidden rounded-xl border border-slate-200">
+    <div class="px-4 py-3 bg-slate-700 flex items-center justify-between">
+      <span class="text-sm font-semibold text-white">Animales activos del socio</span>
+      <span id="badge-anim" class="text-xs bg-esm-600 text-white px-2 py-0.5 rounded-full"></span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="tr w-full">
+        <thead><tr>
+          <th>Código</th><th>Contrato</th><th>Tipo</th>
+          <th class="text-right">Peso finca</th>
+          <th class="text-right">Costo compra</th>
+          <th class="text-right">$/kg ingreso</th>
+          <th>Fecha compra</th>
+          <th class="text-right">Días en campo</th>
+          <th class="text-right">Manten. acum.*</th>
+        </tr></thead>
+        <tbody id="tb-anim"></tbody>
+      </table>
+    </div>
+    <p class="text-xs text-slate-400 px-4 py-2">* Estimado con tarifa vigente</p>
+  </div>
+
 </div>
 
 <script src="<?= APP_URL ?>/js/app.js"></script>
 <script>
+// ════════════════════════════════════════════════════
+// CONFIGURACIÓN
+// ════════════════════════════════════════════════════
 const API = APP_URL + '/api/reportes_socio.php';
+Chart.register(ChartDataLabels);
 
-// ── Cargar lista de socios ────────────────────────────────
+let CH   = {};    // instancias activas de Chart
+let DATOS = {};   // datos del último reporte
+
+const C = {
+  verde: '#059669', rojo: '#ef4444', azul: '#3b82f6',
+  morado: '#8b5cf6', amber: '#f59e0b', indigo: '#6366f1',
+  slate: '#1e293b', gray: '#94a3b8',
+};
+
+function mK(v) {
+  const n = parseFloat(v)||0;
+  if (Math.abs(n) >= 1e6) return '$' + (n/1e6).toFixed(2) + 'M';
+  if (Math.abs(n) >= 1e3) return '$' + (n/1e3).toFixed(1) + 'K';
+  return '$' + Math.round(n).toLocaleString('es-CO');
+}
+function dch(id) { if(CH[id]) { CH[id].destroy(); delete CH[id]; } }
+
+// ════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════
 (async function() {
-  const res = await App.get(API, { action: 'lista_socios' });
-  if (!res.ok) { App.toast('Error al cargar socios.','error'); return; }
-
-  const socios = res.data.data;
-  const sel    = document.getElementById('sel-socio');
-  sel.innerHTML = '<option value="">Seleccione un socio...</option>' +
-    socios.map(s => `<option value="${s.id}">${s.nombre} — ${s.empresa}</option>`).join('');
-
-  // Si solo hay uno (rol socio), cargar automáticamente
-  if (socios.length === 1) {
-    sel.value = socios[0].id;
-    cargarReporte();
-  }
+  const r = await App.get(API, { action: 'lista_socios' });
+  if (!r.ok) return;
+  const s = r.data.data;
+  const el = document.getElementById('f-socio');
+  el.innerHTML = '<option value="">Seleccione un socio...</option>'
+    + s.map(x => `<option value="${x.id}">${x.nombre} — ${x.empresa}</option>`).join('');
+  if (s.length === 1) { el.value = s[0].id; generar(); }
 })();
 
-// ── Cargar reporte completo ───────────────────────────────
-async function cargarReporte() {
-  const idSocio = document.getElementById('sel-socio').value;
-  if (!idSocio) { App.toast('Seleccione un socio.','warning'); return; }
+// ════════════════════════════════════════════════════
+// GENERAR REPORTE
+// ════════════════════════════════════════════════════
+async function generar() {
+  const socio  = document.getElementById('f-socio').value;
+  if (!socio) { App.toast('Seleccione un socio.', 'warning'); return; }
 
-  document.getElementById('reporte-vacio').classList.add('hidden');
-  document.getElementById('reporte-contenido').classList.remove('hidden');
+  const p = {
+    socio,
+    desde:  document.getElementById('f-desde').value,
+    hasta:  document.getElementById('f-hasta').value,
+    estado: document.getElementById('f-estado').value,
+  };
 
-  // Cargar todo en paralelo
-  const [resumen, contratos, animales, ganancias] = await Promise.all([
-    App.get(API, { action: 'resumen',   socio: idSocio }),
-    App.get(API, { action: 'contratos', socio: idSocio }),
-    App.get(API, { action: 'animales',  socio: idSocio }),
-    App.get(API, { action: 'ganancias', socio: idSocio }),
+  document.getElementById('placeholder').classList.add('hidden');
+  document.getElementById('rp').classList.add('hidden');
+  document.getElementById('loader').classList.remove('hidden');
+
+  const [r1,r2,r3,r4] = await Promise.all([
+    App.get(API, { action:'resumen',   ...p }),
+    App.get(API, { action:'contratos', ...p }),
+    App.get(API, { action:'animales',  ...p }),
+    App.get(API, { action:'ganancias', ...p }),
   ]);
 
-  if (!resumen.ok) { App.toast('Error al cargar reporte.','error'); return; }
+  document.getElementById('loader').classList.add('hidden');
+  if (!r1.ok) { App.toast('Error al cargar reporte.','error'); return; }
 
-  renderHeader(resumen.data.data);
-  renderKpisAnimales(resumen.data.data);
-  renderKpisFinanciero(resumen.data.data);
-  renderContratosActivos(contratos.data.data || []);
-  renderAnimalesActivos(animales.data.data || []);
-  renderGanancias(ganancias.data.data || []);
+  DATOS = {
+    resumen:   r1.data.data,
+    contratos: r2.data.data || [],
+    animales:  r3.data.data || [],
+    ganancias: r4.data.data || [],
+  };
+
+  document.getElementById('rp').classList.remove('hidden');
+
+  renderHead();
+  renderKpis();
+  renderTablas();
+
+  setTimeout(() => {
+    ch1_donutAnimales();
+    ch2_barrasContratos();
+    ch3_lineaEvolucion();
+    ch4_donutCostos();
+    ch5_barrasAnimales();
+    ch6_compraVenta();
+  }, 80);
 }
 
-// ── Header del socio ──────────────────────────────────────
-function renderHeader(d) {
-  const s = d.socio;
-  document.getElementById('socio-header').innerHTML = `
-    <div class="flex items-center gap-4">
-      <div class="w-14 h-14 rounded-full bg-esm-100 flex items-center justify-center
-                  text-esm-700 font-display font-bold text-2xl flex-shrink-0">
-        ${s.nombre.charAt(0).toUpperCase()}
+// ════════════════════════════════════════════════════
+// HEADER DEL SOCIO
+// ════════════════════════════════════════════════════
+function renderHead() {
+  const d   = DATOS.resumen;
+  const s   = d.socio;
+  const gan = parseFloat(d.ganancia_total)||0;
+  const desde = document.getElementById('f-desde').value;
+  const hasta  = document.getElementById('f-hasta').value;
+
+  document.getElementById('rp-head').innerHTML = `
+    <div class="flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-4">
+        <div class="w-14 h-14 rounded-full bg-esm-100 flex items-center justify-center
+                    text-esm-700 font-display font-bold text-2xl flex-shrink-0">
+          ${s.nombre.charAt(0).toUpperCase()}
+        </div>
+        <div>
+          <h2 class="font-display text-slate-900 text-2xl font-bold">${s.nombre}</h2>
+          <p class="text-slate-500 text-sm">${s.empresa}
+            ${s.cedula   ? ' · C.C. '+s.cedula   : ''}
+            ${s.telefono ? ' · '+s.telefono : ''}
+          </p>
+          <p class="text-slate-400 text-xs mt-0.5">
+            Período: ${desde ? App.fecha(desde) : 'Inicio'} → ${hasta ? App.fecha(hasta) : 'Hoy'}
+            &nbsp;·&nbsp; Generado <?= date('d/m/Y H:i') ?>
+          </p>
+        </div>
       </div>
-      <div>
-        <h2 class="font-display text-slate-900 text-2xl font-bold">${s.nombre}</h2>
-        <p class="text-slate-500 text-sm">${s.empresa}
-          ${s.cedula ? ' · C.C. ' + s.cedula : ''}
-          ${s.telefono ? ' · ' + s.telefono : ''}
+      <div class="text-right">
+        <p class="text-xs text-slate-400 uppercase tracking-wide">${gan>=0?'Ganancia neta':'Pérdida neta'}</p>
+        <p class="font-display font-bold text-3xl ${gan>=0?'text-esm-600':'text-red-600'}">
+          ${App.moneda(Math.abs(gan))}
         </p>
-        <p class="text-slate-400 text-xs mt-0.5">
-          Reporte generado el <?= date('d/m/Y H:i') ?>
-        </p>
+        <p class="text-xs text-slate-400 mt-0.5">${d.contratos.contratos_cerrados||0} contrato(s) cerrado(s)</p>
       </div>
     </div>`;
 }
 
-// ── KPIs animales ─────────────────────────────────────────
-function renderKpisAnimales(d) {
-  const a = d.animales;
-  const total = parseInt(a.total_animales) || 0;
-  const activos   = parseInt(a.animales_activos)  || 0;
-  const vendidos  = parseInt(a.animales_vendidos) || 0;
-  const muertos   = parseInt(a.animales_muertos)  || 0;
+// ════════════════════════════════════════════════════
+// KPIs
+// ════════════════════════════════════════════════════
+function renderKpis() {
+  const d   = DATOS.resumen;
+  const a   = d.animales;
+  const total   = parseInt(a.total_animales)||0;
+  const activos  = parseInt(a.animales_activos)||0;
+  const vendidos = parseInt(a.animales_vendidos)||0;
+  const muertos  = parseInt(a.animales_muertos)||0;
 
-  document.getElementById('kpis-animales').innerHTML = [
-    { label:'Total animales (su parte)', value: total, color:'#3b82f6', sub:'en todos los contratos' },
-    { label:'Animales activos',  value: activos,  color:'#059669', sub:'en campo / engorde' },
-    { label:'Animales vendidos', value: vendidos, color:'#8b5cf6', sub:'liquidados y cerrados' },
-    { label:'Bajas / muertes',   value: muertos,  color:'#ef4444', sub:'salida por muerte' },
-  ].map(k => `
-    <div class="kpi">
-      <div class="kpi-accent" style="background:${k.color}"></div>
-      <p class="kpi-label">${k.label}</p>
-      <p class="kpi-value" style="color:${k.color}">${k.value}</p>
+  const kpis_anim = [
+    { lbl:'Total animales',    val:total,    ac:C.azul,  sub:'todos los contratos' },
+    { lbl:'Activos en campo',  val:activos,  ac:C.verde,  sub:total>0?(activos/total*100).toFixed(0)+'% del total':'' },
+    { lbl:'Vendidos',          val:vendidos, ac:C.morado, sub:'liquidados' },
+    { lbl:'Muertes / bajas',   val:muertos,  ac:C.rojo,   sub:'salida por muerte' },
+    { lbl:'Contratos',         val:parseInt(d.contratos.total_contratos)||0,
+      ac:C.amber, sub:`${d.contratos.contratos_abiertos||0} abiertos · ${d.contratos.contratos_cerrados||0} cerrados` },
+  ];
+  document.getElementById('kpi-anim').innerHTML = kpis_anim.map(k => `
+    <div class="kpi" style="--ac:${k.ac}">
+      <p class="kpi-lbl">${k.lbl}</p>
+      <p class="kpi-val">${k.val}</p>
       <p class="kpi-sub">${k.sub}</p>
-      ${total > 0 ? `
-      <div class="barra-container mt-2">
-        <div class="barra-fill" style="background:${k.color};width:${Math.min(100,(k.value/total)*100).toFixed(1)}%"></div>
-      </div>` : ''}
+      ${total>0&&k.lbl!=='Contratos'?`<div class="prog"><div class="prog-f" style="width:${Math.min(100,(k.val/total)*100).toFixed(1)}%"></div></div>`:''}
     </div>`).join('');
-}
 
-// ── KPIs financieros ──────────────────────────────────────
-function renderKpisFinanciero(d) {
-  const gan    = parseFloat(d.ganancia_total)   || 0;
-  const costos = parseFloat(d.costo_total)      || 0;
-  const ventas = parseFloat(d.ingresos_ventas)  || 0;
-  const invers = parseFloat(d.inversion_activa) || 0;
-  const rentab = ventas > 0 ? ((gan / costos) * 100).toFixed(1) : '—';
+  const gan   = parseFloat(d.ganancia_total)||0;
+  const costo = parseFloat(d.costo_total)||0;
+  const venta = parseFloat(d.ingresos_ventas)||0;
+  const inver = parseFloat(d.inversion_activa)||0;
+  const rent  = costo>0?((gan/costo)*100).toFixed(1)+'%':'—';
+  const margen= venta>0?((gan/venta)*100).toFixed(1)+'%':'—';
 
-  document.getElementById('kpis-financiero').innerHTML = [
-    { label:'Inversión activa (abiertos)',  value: App.moneda(invers), color:'#3b82f6',
-      sub:'valor de compra proporcional' },
-    { label:'Ingresos por ventas',          value: App.moneda(ventas), color:'#8b5cf6',
-      sub:'contratos cerrados' },
-    { label:'Costos acumulados',            value: App.moneda(costos), color:'#f59e0b',
-      sub:'compra + manten. + fletes' },
-    { label: gan >= 0 ? 'Ganancia neta' : 'Pérdida neta',
-      value: App.moneda(Math.abs(gan)),
-      color: gan >= 0 ? '#059669' : '#ef4444',
-      sub: 'Rentabilidad: ' + (rentab !== '—' ? rentab + '%' : '—') },
-  ].map(k => `
-    <div class="kpi">
-      <div class="kpi-accent" style="background:${k.color}"></div>
-      <p class="kpi-label">${k.label}</p>
-      <p class="kpi-value text-xl" style="color:${k.color}">${k.value}</p>
+  const kpis_fin = [
+    { lbl:'Inversión activa', val:App.moneda(inver), ac:C.azul,  sub:'contratos abiertos' },
+    { lbl:'Ingresos ventas',  val:App.moneda(venta), ac:C.morado, sub:'contratos cerrados' },
+    { lbl:'Costos totales',   val:App.moneda(costo), ac:C.amber,  sub:'compra+manten+fletes' },
+    { lbl: gan>=0?'Ganancia neta':'Pérdida neta',
+      val: App.moneda(Math.abs(gan)), ac: gan>=0?C.verde:C.rojo,
+      sub:`Rentab. ${rent} · Margen ${margen}` },
+  ];
+  document.getElementById('kpi-fin').innerHTML = kpis_fin.map(k => `
+    <div class="kpi" style="--ac:${k.ac}">
+      <p class="kpi-lbl">${k.lbl}</p>
+      <p class="kpi-val text-xl">${k.val}</p>
       <p class="kpi-sub">${k.sub}</p>
     </div>`).join('');
 }
 
-// ── Contratos activos ─────────────────────────────────────
-function renderContratosActivos(contratos) {
-  const abiertos = contratos.filter(c => c.estado === 'abierto');
-  document.getElementById('badge-activos').textContent = abiertos.length + ' contrato(s)';
+// ════════════════════════════════════════════════════
+// TABLAS
+// ════════════════════════════════════════════════════
+function renderTablas() {
+  const con = DATOS.contratos;
+  document.getElementById('badge-con').textContent = con.length + ' contrato(s)';
 
-  if (!abiertos.length) {
-    document.getElementById('tbody-contratos-activos').innerHTML =
-      '<tr><td colspan="12" class="text-center py-6 text-slate-400 text-sm">Sin contratos abiertos</td></tr>';
-    return;
+  let tI=0, tG=0, tInv=0;
+  document.getElementById('tb-con').innerHTML = con.length
+    ? con.map(c => {
+        const gan  = parseFloat(c.ganancia_socio||0)
+                   || (parseFloat(c.ventas_acumuladas_socio||0) - parseFloat(c.costos_acumulados_socio||0));
+        const ing  = parseFloat(c.ventas_acumuladas_socio||0) || parseFloat(c.ingresos_socio||0);
+        const cos  = parseFloat(c.costos_acumulados_socio||0) || parseFloat(c.costo_total_socio||0);
+        const ren  = cos>0?((gan/cos)*100).toFixed(1)+'%':'—';
+        tI += ing; tG += gan; tInv += parseFloat(c.inversion_socio||0);
+        const ganC = gan>=0?'text-esm-600 font-semibold':'text-red-600 font-semibold';
+        const badge = c.estado==='abierto'?'<span class="b b-g">Abierto</span>':'<span class="b b-s">Cerrado</span>';
+        return `<tr>
+          <td><a href="${APP_URL}/contratos/detalle.php?id=${c.id}"
+                 class="font-mono text-esm-600 hover:underline font-semibold">${c.codigo}</a></td>
+          <td class="text-slate-500">${c.tipo_animal}</td>
+          <td class="text-slate-500">${App.fecha(c.fecha_compra)}</td>
+          <td class="text-center"><span class="b b-s">${parseFloat(c.porcentaje).toFixed(0)}%</span></td>
+          <td class="text-right font-semibold">${parseInt(c.animales_socio)||0}</td>
+          <td class="text-right text-esm-600 font-semibold">${parseInt(c.activos_socio)||0}</td>
+          <td class="text-right text-purple-600">${parseInt(c.vendidos_socio)||0}</td>
+          <td class="text-right text-red-500">${parseInt(c.muertos_socio)||0}</td>
+          <td class="text-right">${App.moneda(c.inversion_socio||0)}</td>
+          <td class="text-right text-esm-600">${App.moneda(ing)}</td>
+          <td class="text-right ${ganC}">${App.moneda(gan)}</td>
+          <td class="text-right">${ren}</td>
+          <td>${badge}</td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="13" class="text-center py-6 text-slate-400">Sin contratos en el período</td></tr>';
+
+  if (con.length) {
+    const ganTC = tG>=0?'color:#059669':'color:#ef4444';
+    document.getElementById('tf-con').innerHTML = `
+      <tr>
+        <td colspan="8">TOTALES</td>
+        <td class="text-right">${App.moneda(tInv)}</td>
+        <td class="text-right" style="color:#059669">${App.moneda(tI)}</td>
+        <td class="text-right" style="${ganTC}">${App.moneda(tG)}</td>
+        <td class="text-right">${tI>0?((tG/tI)*100).toFixed(1)+'%':'—'}</td>
+        <td></td>
+      </tr>`;
   }
 
-  document.getElementById('tbody-contratos-activos').innerHTML = abiertos.map(c => {
-    const ganAcum  = parseFloat(c.ventas_acumuladas_socio||0) - parseFloat(c.costos_acumulados_socio||0);
-    const ganCls   = ganAcum >= 0 ? 'text-esm-700 font-semibold' : 'text-red-600 font-semibold';
-    return `
-    <tr>
-      <td><a href="${APP_URL}/contratos/detalle.php?id=${c.id}"
-             class="font-mono text-esm-600 hover:underline font-medium">${c.codigo}</a></td>
-      <td>${c.tipo_animal}</td>
-      <td class="text-slate-500">${c.empresa_compra}</td>
-      <td class="text-center">
-        <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">
-          ${parseFloat(c.porcentaje).toFixed(0)}%
-        </span>
-      </td>
-      <td class="text-right font-semibold text-slate-800">${parseInt(c.animales_socio)||0}</td>
-      <td class="text-right">
-        <span class="text-esm-700 font-semibold">${parseInt(c.activos_socio)||0}</span>
-      </td>
-      <td class="text-right text-slate-500">${parseInt(c.vendidos_socio)||0}</td>
-      <td class="text-right text-red-500">${parseInt(c.muertos_socio)||0}</td>
-      <td class="text-right">${App.moneda(c.inversion_socio)}</td>
-      <td class="text-right text-slate-600">${App.moneda(c.ventas_acumuladas_socio||0)}</td>
-      <td class="text-right ${ganCls}">${App.moneda(ganAcum)}</td>
-      <td><span class="text-xs badge-green px-2 py-0.5 rounded-full font-semibold">Abierto</span></td>
-    </tr>`;
-  }).join('');
+  // Animales activos
+  const anim = DATOS.animales;
+  document.getElementById('badge-anim').textContent = anim.length + ' animal(es)';
+  const hoy = new Date();
+  document.getElementById('tb-anim').innerHTML = anim.length
+    ? anim.map(a => {
+        const fcmp = new Date(a.fecha_compra);
+        const dias = Math.round((hoy-fcmp)/86400000);
+        const mant = App.moneda(Math.round((dias/(365/12))*11518));
+        return `<tr>
+          <td class="font-mono font-semibold">${a.codigo||'<span class="text-slate-300 italic text-xs">—</span>'}</td>
+          <td><a href="${APP_URL}/contratos/detalle.php?id=${a.id_contrato}"
+                 class="text-esm-600 hover:underline text-xs font-mono">${a.contrato_codigo}</a></td>
+          <td class="text-slate-500">${a.tipo_animal}</td>
+          <td class="text-right">${a.peso_finca_kg?App.kg(a.peso_finca_kg):'<span class="text-slate-300">—</span>'}</td>
+          <td class="text-right">${App.moneda(a.costo_compra_animal)}</td>
+          <td class="text-right font-medium">${a.valor_promedio_kg?App.moneda(a.valor_promedio_kg)+'/kg':'—'}</td>
+          <td class="text-slate-500">${App.fecha(a.fecha_compra)}</td>
+          <td class="text-right font-bold text-slate-700">${dias}</td>
+          <td class="text-right text-amber-600">${mant}</td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="9" class="text-center py-6 text-slate-400">Sin animales activos</td></tr>';
 }
 
-// ── Animales activos ──────────────────────────────────────
-function renderAnimalesActivos(animales) {
-  document.getElementById('badge-anim-activos').textContent = animales.length + ' animal(es)';
+// ════════════════════════════════════════════════════
+// GRÁFICOS
+// ════════════════════════════════════════════════════
+const TT = {
+  plugins: { tooltip: { titleFont:{family:'DM Sans',size:11}, bodyFont:{family:'DM Sans',size:11} } }
+};
 
-  if (!animales.length) {
-    document.getElementById('tbody-animales-activos').innerHTML =
-      '<tr><td colspan="8" class="text-center py-6 text-slate-400 text-sm">Sin animales activos</td></tr>';
-    return;
-  }
+// 1. Donut animales
+function ch1_donutAnimales() {
+  dch('c1');
+  const a = DATOS.resumen.animales;
+  const vals = [parseInt(a.animales_activos)||0, parseInt(a.animales_vendidos)||0, parseInt(a.animales_muertos)||0];
+  const total = vals.reduce((s,x)=>s+x,0);
+  const labs  = ['Activos','Vendidos','Muertos'];
+  const cols  = [C.verde, C.morado, C.rojo];
 
-  document.getElementById('tbody-animales-activos').innerHTML = animales.map(a => `
-    <tr>
-      <td class="font-mono font-medium text-slate-700">
-        ${a.codigo || '<span class="text-slate-300 italic text-xs">Sin código</span>'}
-      </td>
-      <td>
-        <a href="${APP_URL}/contratos/detalle.php?id=${a.id_contrato}"
-           class="text-esm-600 hover:underline text-xs font-mono">${a.contrato_codigo}</a>
-      </td>
-      <td class="text-slate-500">${a.tipo_animal}</td>
-      <td class="text-right">${a.peso_finca_kg ? App.kg(a.peso_finca_kg) : '<span class="text-slate-300">—</span>'}</td>
-      <td class="text-right">${App.moneda(a.costo_compra_animal)}</td>
-      <td class="text-right">${App.moneda(a.costo_flete_animal)}</td>
-      <td class="text-right font-medium text-slate-700">
-        ${a.valor_promedio_kg ? App.moneda(a.valor_promedio_kg)+'/kg' : '—'}
-      </td>
-      <td class="text-slate-500">${App.fecha(a.fecha_compra)}</td>
-    </tr>`).join('');
+  document.getElementById('ch1-leg').innerHTML = labs.map((l,i)=>
+    `<div class="flex items-center gap-1.5">
+       <span class="w-2.5 h-2.5 rounded-full" style="background:${cols[i]}"></span>
+       <span>${l}: <strong>${vals[i]}</strong></span>
+     </div>`).join('');
+
+  CH.c1 = new Chart(document.getElementById('ch1'), {
+    type:'doughnut',
+    data:{ labels:labs, datasets:[{ data:vals, backgroundColor:cols, borderWidth:2, borderColor:'#fff', hoverOffset:6 }] },
+    options:{
+      cutout:'68%',
+      plugins:{
+        legend:{ display:false },
+        datalabels:{ color:'#fff', font:{weight:'bold',size:12},
+          formatter:(v)=>total>0&&v>0?Math.round(v/total*100)+'%':'' },
+        tooltip:{ callbacks:{ label:ctx=>` ${ctx.label}: ${ctx.raw} animales` } },
+      },
+    },
+  });
 }
 
-// ── Ganancias por contrato cerrado ────────────────────────
-function renderGanancias(ganancias) {
-  document.getElementById('badge-cerrados').textContent = ganancias.length + ' contrato(s)';
-  const contenedor = document.getElementById('lista-ganancias');
+// 2. Barras resultado por contrato
+function ch2_barrasContratos() {
+  dch('c2');
+  const gan  = DATOS.ganancias.slice(0,10);
+  const abr  = DATOS.contratos.filter(c=>c.estado==='abierto').slice(0,5);
+  const datos = [
+    ...gan.map(g=>({
+      cod:g.codigo,
+      ing:parseFloat(g.ingresos_socio),
+      cos:parseFloat(g.costo_total_socio),
+      gan:parseFloat(g.ganancia_socio),
+    })),
+    ...abr.map(c=>({
+      cod:c.codigo+'*',
+      ing:parseFloat(c.ventas_acumuladas_socio||0),
+      cos:parseFloat(c.costos_acumulados_socio||0),
+      gan:parseFloat(c.ventas_acumuladas_socio||0)-parseFloat(c.costos_acumulados_socio||0),
+    })),
+  ];
+  if (!datos.length) return;
 
-  if (!ganancias.length) {
-    contenedor.innerHTML = `
-      <div class="text-center py-8 text-slate-400">
-        <svg class="w-10 h-10 mx-auto mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-        </svg>
-        <p class="text-sm">No hay contratos cerrados aún</p>
-      </div>`;
-    return;
-  }
+  CH.c2 = new Chart(document.getElementById('ch2'), {
+    type:'bar',
+    data:{
+      labels:datos.map(d=>d.cod),
+      datasets:[
+        { label:'Ingresos', data:datos.map(d=>d.ing), backgroundColor:'rgba(5,150,105,.7)', borderRadius:3 },
+        { label:'Costos',   data:datos.map(d=>d.cos), backgroundColor:'rgba(239,68,68,.6)', borderRadius:3 },
+        { label:'Ganancia', data:datos.map(d=>d.gan),
+          backgroundColor:datos.map(d=>d.gan>=0?'rgba(99,102,241,.8)':'rgba(239,68,68,.8)'),
+          borderRadius:3 },
+      ],
+    },
+    options:{
+      ...TT,
+      plugins:{
+        legend:{ position:'top', labels:{font:{family:'DM Sans',size:10},color:'#64748b'} },
+        datalabels:{ display:false },
+        tooltip:{ callbacks:{ label:ctx=>` ${ctx.dataset.label}: ${App.moneda(ctx.raw)}` } },
+      },
+      scales:{
+        x:{ ticks:{font:{size:9},color:'#64748b'}, grid:{display:false} },
+        y:{ ticks:{font:{size:9},color:'#64748b',callback:v=>mK(v)}, grid:{color:'#f1f5f9'} },
+      },
+    },
+  });
+}
 
-  contenedor.innerHTML = ganancias.map(g => {
-    const positivo  = parseFloat(g.ganancia_socio) >= 0;
-    const rentab    = parseFloat(g.ingresos_socio) > 0
-      ? ((parseFloat(g.ganancia_socio) / parseFloat(g.costo_total_socio)) * 100).toFixed(1) + '%'
-      : '—';
+// 3. Línea evolución
+function ch3_lineaEvolucion() {
+  dch('c3');
+  const g = [...DATOS.ganancias].sort((a,b)=>a.fecha_cierre.localeCompare(b.fecha_cierre));
+  if (!g.length) return;
+  let acum=0;
+  const labs=[], dGan=[], dAcum=[];
+  g.forEach(x=>{ acum+=parseFloat(x.ganancia_socio); labs.push(App.fecha(x.fecha_cierre)); dGan.push(parseFloat(x.ganancia_socio)); dAcum.push(acum); });
 
-    const costos = [
-      { label:'Compra ganado',    valor: g.costo_compra_socio },
-      { label:'Flete entrada',    valor: g.costo_flete_ent_socio },
-      { label:'Manutención',      valor: g.costo_manten_socio },
-      { label:'Flete salida',     valor: g.costo_flete_sal_socio },
-      { label:'Otros gastos',     valor: g.costo_otros_socio },
-    ].filter(x => parseFloat(x.valor) > 0);
+  CH.c3 = new Chart(document.getElementById('ch3'), {
+    type:'line',
+    data:{
+      labels:labs,
+      datasets:[
+        { label:'Ganancia por cierre', data:dGan, borderColor:C.verde,
+          backgroundColor:'rgba(5,150,105,.08)', fill:true,
+          pointBackgroundColor:C.verde, pointRadius:5, tension:.35 },
+        { label:'Acumulada', data:dAcum, borderColor:C.indigo,
+          backgroundColor:'transparent', borderDash:[5,4],
+          pointBackgroundColor:C.indigo, pointRadius:4, tension:.35 },
+      ],
+    },
+    options:{
+      ...TT,
+      plugins:{
+        legend:{ position:'top', labels:{font:{family:'DM Sans',size:10},color:'#64748b'} },
+        datalabels:{ display:false },
+        tooltip:{ callbacks:{ label:ctx=>` ${ctx.dataset.label}: ${App.moneda(ctx.raw)}` } },
+      },
+      scales:{
+        x:{ ticks:{font:{size:9},color:'#64748b'}, grid:{display:false} },
+        y:{ ticks:{font:{size:9},color:'#64748b',callback:v=>mK(v)}, grid:{color:'#f1f5f9'} },
+      },
+    },
+  });
+}
 
-    return `
-    <div class="border border-slate-200 rounded-xl overflow-hidden">
-      <!-- Header del contrato -->
-      <div class="flex items-center justify-between px-5 py-3 bg-slate-50 border-b border-slate-200">
-        <div class="flex items-center gap-3">
-          <a href="${APP_URL}/contratos/detalle.php?id=${g.id}"
-             class="font-mono font-bold text-slate-700 hover:text-esm-600">${g.codigo}</a>
-          <span class="text-xs text-slate-400">${g.tipo_animal} · ${g.empresa}</span>
-          <span class="text-xs text-slate-400">Cerrado: ${App.fecha(g.fecha_cierre)}</span>
-        </div>
-        <div class="flex items-center gap-4">
-          <div class="text-right">
-            <p class="text-xs text-slate-400">Participación</p>
-            <p class="text-sm font-bold text-slate-700">${parseFloat(g.porcentaje).toFixed(0)}%</p>
-          </div>
-          <div class="text-right">
-            <p class="text-xs text-slate-400">Rentabilidad</p>
-            <p class="text-sm font-bold ${positivo ? 'text-esm-600' : 'text-red-600'}">${rentab}</p>
-          </div>
-          <div class="text-right">
-            <p class="text-xs text-slate-400">${positivo ? 'Ganancia' : 'Pérdida'}</p>
-            <p class="font-display font-bold text-xl ${positivo ? 'text-esm-600' : 'text-red-600'}">
-              ${App.moneda(g.ganancia_socio)}
-            </p>
-          </div>
-        </div>
-      </div>
+// 4. Donut costos
+function ch4_donutCostos() {
+  dch('c4');
+  const g = DATOS.ganancias;
+  if (!g.length) return;
+  const sm=k=>g.reduce((s,x)=>s+(parseFloat(x[k])||0),0);
+  const vals = [sm('costo_compra_socio'),sm('costo_flete_ent_socio'),sm('costo_manten_socio'),sm('costo_flete_sal_socio'),sm('costo_otros_socio')];
+  const labs  = ['Compra','Fl.Entrada','Manutención','Fl.Salida','Otros'];
+  const cols  = [C.slate,'#3b82f6',C.amber,C.indigo,C.gray];
+  const total = vals.reduce((s,x)=>s+x,0);
 
-      <!-- Cuerpo: animales + costos vs ingresos -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-0 divide-y md:divide-y-0 md:divide-x divide-slate-100">
+  CH.c4 = new Chart(document.getElementById('ch4'), {
+    type:'doughnut',
+    data:{ labels:labs, datasets:[{ data:vals, backgroundColor:cols, borderWidth:2, borderColor:'#fff', hoverOffset:5 }] },
+    options:{
+      cutout:'60%',
+      plugins:{
+        legend:{ position:'bottom', labels:{font:{family:'DM Sans',size:9},color:'#64748b',padding:6,boxWidth:9} },
+        datalabels:{ color:'#fff', font:{weight:'bold',size:9},
+          formatter:(v)=>total>0&&v/total>=0.05?Math.round(v/total*100)+'%':'' },
+        tooltip:{ callbacks:{ label:ctx=>` ${ctx.label}: ${App.moneda(ctx.raw)}` } },
+      },
+    },
+  });
+}
 
-        <!-- Animales -->
-        <div class="px-5 py-4">
-          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Animales (total lote)</p>
-          <div class="space-y-2">
-            ${[
-              ['Total',   g.total_animales,   '#64748b'],
-              ['Vendidos',g.animales_vendidos,'#059669'],
-              ['Muertos', g.animales_muertos, '#ef4444'],
-            ].map(([l,v,c]) => `
-              <div class="flex items-center justify-between">
-                <span class="text-xs text-slate-500">${l}</span>
-                <span class="text-sm font-semibold" style="color:${c}">${v}</span>
-              </div>`).join('')}
-            <div class="pt-2 border-t border-slate-100 flex items-center justify-between">
-              <span class="text-xs text-slate-500">Le corresponden</span>
-              <span class="text-sm font-bold text-blue-600">
-                ~${Math.round(parseInt(g.total_animales) * parseFloat(g.porcentaje)/100)} animales
-              </span>
-            </div>
-          </div>
-        </div>
+// 5. Barras apiladas animales por contrato
+function ch5_barrasAnimales() {
+  dch('c5');
+  const con = DATOS.contratos.slice(0,12);
+  if (!con.length) return;
+  CH.c5 = new Chart(document.getElementById('ch5'), {
+    type:'bar',
+    data:{
+      labels:con.map(c=>c.codigo),
+      datasets:[
+        { label:'Activos',  data:con.map(c=>parseInt(c.activos_socio)||0),  backgroundColor:'rgba(5,150,105,.75)', borderRadius:2 },
+        { label:'Vendidos', data:con.map(c=>parseInt(c.vendidos_socio)||0), backgroundColor:'rgba(139,92,246,.7)', borderRadius:2 },
+        { label:'Muertos',  data:con.map(c=>parseInt(c.muertos_socio)||0),  backgroundColor:'rgba(239,68,68,.6)',  borderRadius:2 },
+      ],
+    },
+    options:{
+      ...TT,
+      plugins:{
+        legend:{ position:'top', labels:{font:{family:'DM Sans',size:10},color:'#64748b'} },
+        datalabels:{ anchor:'end',align:'top',color:'#475569',font:{size:8,weight:'600'},
+          formatter:v=>v>0?v:'' },
+        tooltip:{ callbacks:{ label:ctx=>` ${ctx.dataset.label}: ${ctx.raw}` } },
+      },
+      scales:{
+        x:{ ticks:{font:{size:9},color:'#64748b'}, grid:{display:false} },
+        y:{ ticks:{font:{size:9},color:'#64748b',stepSize:1}, grid:{color:'#f1f5f9'} },
+      },
+    },
+  });
+}
 
-        <!-- Desglose costos -->
-        <div class="px-5 py-4">
-          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Costos (su parte)</p>
-          <div class="space-y-1.5">
-            ${costos.map(c => `
-              <div class="flex items-center justify-between text-xs">
-                <span class="text-slate-500">${c.label}</span>
-                <span class="font-medium text-slate-700">${App.moneda(c.valor)}</span>
-              </div>`).join('')}
-            <div class="flex items-center justify-between text-xs pt-1.5 border-t border-slate-100 font-bold">
-              <span class="text-slate-700">Total costos</span>
-              <span class="text-red-600">${App.moneda(g.costo_total_socio)}</span>
-            </div>
-          </div>
-        </div>
+// 6. Precio compra vs venta
+function ch6_compraVenta() {
+  dch('c6');
+  const cer = DATOS.contratos.filter(c=>c.estado==='cerrado').slice(0,10);
+  if (!cer.length) return;
+  CH.c6 = new Chart(document.getElementById('ch6'), {
+    type:'bar',
+    data:{
+      labels:cer.map(c=>c.codigo),
+      datasets:[
+        { label:'$/kg compra', data:cer.map(c=>parseFloat(c.valor_unitario_kg||0)),
+          backgroundColor:'rgba(239,68,68,.65)', borderRadius:3 },
+        { label:'$/kg venta prom.', data:cer.map(c=>{
+            const ing=parseFloat(c.ventas_acumuladas_socio||0);
+            const pes=parseFloat(c.peso_total_kg||1);
+            return ing>0&&pes>0?Math.round(ing/pes):0;
+          }), backgroundColor:'rgba(5,150,105,.7)', borderRadius:3 },
+      ],
+    },
+    options:{
+      ...TT,
+      plugins:{
+        legend:{ position:'top', labels:{font:{family:'DM Sans',size:10},color:'#64748b'} },
+        datalabels:{ anchor:'end',align:'top',color:'#475569',font:{size:8,weight:'600'},
+          formatter:v=>v>0?mK(v):'' },
+        tooltip:{ callbacks:{ label:ctx=>` ${ctx.dataset.label}: ${App.moneda(ctx.raw)}/kg` } },
+      },
+      scales:{
+        x:{ ticks:{font:{size:9},color:'#64748b'}, grid:{display:false} },
+        y:{ ticks:{font:{size:9},color:'#64748b',callback:v=>mK(v)}, grid:{color:'#f1f5f9'} },
+      },
+    },
+  });
+}
 
-        <!-- Ingresos vs costos -->
-        <div class="px-5 py-4">
-          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Resultado (su parte)</p>
-          <div class="space-y-2">
-            <div class="flex justify-between items-center">
-              <span class="text-xs text-slate-500">Ingresos ventas</span>
-              <span class="text-sm font-semibold text-esm-600">${App.moneda(g.ingresos_socio)}</span>
-            </div>
-            <div class="flex justify-between items-center">
-              <span class="text-xs text-slate-500">Total costos</span>
-              <span class="text-sm font-semibold text-red-500">${App.moneda(g.costo_total_socio)}</span>
-            </div>
-            <!-- Barra visual ganancia vs costo -->
-            ${parseFloat(g.ingresos_socio) > 0 ? `
-            <div class="pt-1">
-              <div class="flex text-xs text-slate-400 justify-between mb-1">
-                <span>Costos</span><span>Ingresos</span>
-              </div>
-              <div class="barra-container">
-                <div class="barra-fill ${positivo ? 'bg-esm-500' : 'bg-red-500'}"
-                     style="width:${Math.min(100,(parseFloat(g.costo_total_socio)/parseFloat(g.ingresos_socio)*100)).toFixed(1)}%">
-                </div>
-              </div>
-            </div>` : ''}
-            <div class="flex justify-between items-center pt-2 border-t border-slate-100">
-              <span class="text-sm font-bold text-slate-700">${positivo ? 'Ganancia' : 'Pérdida'}</span>
-              <span class="font-display font-bold text-lg ${positivo ? 'text-esm-600' : 'text-red-600'}">
-                ${App.moneda(g.ganancia_socio)}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
+// ════════════════════════════════════════════════════
+// EXPORTAR CSV
+// ════════════════════════════════════════════════════
+function exportarCSV() {
+  const c = DATOS.contratos||[];
+  if (!c.length) { App.toast('Sin datos.','warning'); return; }
+  const cab = ['Contrato','Tipo','Fecha','Part%','Anim','Activos','Vendidos','Muertos','Inversión','Ingresos','Ganancia','Estado'];
+  const fil = c.map(x=>{
+    const gan = parseFloat(x.ganancia_socio||0)||(parseFloat(x.ventas_acumuladas_socio||0)-parseFloat(x.costos_acumulados_socio||0));
+    return [x.codigo,x.tipo_animal,x.fecha_compra,x.porcentaje,x.animales_socio,x.activos_socio,x.vendidos_socio,x.muertos_socio,x.inversion_socio,parseFloat(x.ventas_acumuladas_socio||0).toFixed(2),gan.toFixed(2),x.estado].join(',');
+  });
+  const csv  = '\ufeff'+[cab.join(','),...fil].join('\n');
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+  a.download = `reporte_${document.getElementById('f-socio').value}_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
 }
 </script>
 

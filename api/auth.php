@@ -4,16 +4,21 @@
 // ============================================================
 
 require_once __DIR__ . '/../bootstrap.php';
-header('Content-Type: application/json; charset=utf-8');
 
 $method = $_SERVER['REQUEST_METHOD'];
 $action = input('action', 'login', 'GET');
 
+// ── LOGOUT ────────────────────────────────────────────────
 if ($action === 'logout') {
     Auth::logout();
-    Response::success(null, 'Sesión cerrada.');
+    // Siempre redirigir al login (sea fetch o link directo)
+    header('Location: /ganadero/login.php');
+    exit;
 }
 
+header('Content-Type: application/json; charset=utf-8');
+
+// ── LOGIN ─────────────────────────────────────────────────
 if ($method === 'POST') {
     $data = jsonInput();
 
@@ -40,7 +45,7 @@ if ($method === 'POST') {
     ], 'Sesión iniciada.');
 }
 
-// GET: verificar sesión activa
+// ── VERIFICAR SESIÓN ──────────────────────────────────────
 if ($method === 'GET' && $action === 'me') {
     if (!Auth::check()) Response::unauthorized();
     Response::success(Auth::user());

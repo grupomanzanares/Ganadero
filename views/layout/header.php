@@ -283,16 +283,25 @@ $modulo = $modulo ?? '';
         <p class="text-slate-400 text-xs capitalize"><?= htmlspecialchars($user['rol']) ?></p>
       </div>
     </div>
-    <a href="<?= APP_URL ?>/api/auth.php?action=logout"
-       class="text-slate-500 hover:text-slate-200 text-xs flex items-center gap-1 mt-1">
+    <button onclick="cerrarSesion()"
+       class="text-slate-500 hover:text-slate-200 text-xs flex items-center gap-1 mt-1 bg-transparent border-0 cursor-pointer">
       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
           d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
       </svg>
       Cerrar sesión
-    </a>
+    </button>
   </div>
 </aside>
+
+<script>
+async function cerrarSesion() {
+  try {
+    await fetch('/ganadero/api/auth.php?action=logout', { credentials: 'same-origin' });
+  } catch(e) {}
+  window.location.href = '/ganadero/login.php';
+}
+</script>
 
 <!-- ── CONTENIDO PRINCIPAL ──────────────────────────────────── -->
 <div class="ml-64 min-h-screen flex flex-col">
