@@ -1,0 +1,42 @@
+# ============================================================
+# ganadero/.htaccess — Configuración Apache + CORS
+# ============================================================
+
+# Habilitar mod_rewrite si está disponible
+Options -Indexes
+Options +FollowSymLinks
+
+# ── Headers CORS para las APIs ────────────────────────────
+<IfModule mod_headers.c>
+    # Permitir el mismo origen (http y https)
+    SetEnvIfNoCase Origin "^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$" CORS_ORIGIN=$0
+
+    Header always set Access-Control-Allow-Origin "%{CORS_ORIGIN}e" env=CORS_ORIGIN
+    Header always set Access-Control-Allow-Credentials "true"
+    Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+    Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
+    Header always set Access-Control-Max-Age "86400"
+
+    # Responder OK a preflight OPTIONS sin pasar al PHP
+    RewriteEngine On
+    RewriteCond %{REQUEST_METHOD} OPTIONS
+    RewriteRule ^ - [R=200,L]
+</IfModule>
+
+# ── Seguridad básica ──────────────────────────────────────
+# Ocultar archivos sensibles
+<FilesMatch "\.(sql|log|env|md|json|lock)$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# Proteger carpetas del core
+<FilesMatch "^(bootstrap|config|core)">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# ── PHP: deshabilitar display_errors en producción ───────
+<IfModule mod_php.c>
+    php_flag display_errors Off
+</IfModule>

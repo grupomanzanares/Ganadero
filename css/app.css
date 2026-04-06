@@ -1,0 +1,438 @@
+/* ============================================================
+   css/app.css — Tailwind compilado + estilos propios
+   Tema: Ganadería — tierra, cuero, verde campo
+   ============================================================ */
+
+/* --- Tailwind base (CDN alternativo: usar CLI en producción) ---
+   Para generar con CLI:  npx tailwindcss -i ./css/app.css -o ./css/output.css --watch
+   
+   Configuración de colores personalizados en tailwind.config.js:
+   module.exports = {
+     theme: {
+       extend: {
+         colors: {
+           tierra: {
+             50:'#fdf8f0', 100:'#f5e6c8', 200:'#e8c98a',
+             300:'#d4a843', 400:'#b88930', 500:'#8b6320',
+             600:'#6b4c18', 700:'#523b12', 800:'#3a2a0c', 900:'#231908'
+           },
+           verde: {
+             50:'#f0f7ed', 100:'#d4eac8', 200:'#a3cd8f',
+             300:'#6fb05a', 400:'#4d9038', 500:'#3a7229',
+             600:'#2a561e', 700:'#1e4015', 800:'#142b0e', 900:'#0b1907'
+           }
+         }
+       }
+     }
+   }
+*/
+
+/* --- Importar Tailwind vía CDN para desarrollo rápido ---
+   (en producción usar CLI para purge y compilación) */
+@import url('https://cdn.tailwindcss.com');
+
+/* --- Fuentes --- */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;0,9..144,700;1,9..144,400&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap');
+
+/* --- Variables CSS --- */
+:root {
+  --color-tierra-50:  #fdf8f0;
+  --color-tierra-100: #f5e6c8;
+  --color-tierra-200: #e8c98a;
+  --color-tierra-300: #d4a843;
+  --color-tierra-400: #b88930;
+  --color-tierra-500: #8b6320;
+  --color-tierra-600: #6b4c18;
+  --color-tierra-700: #523b12;
+  --color-tierra-800: #3a2a0c;
+  --color-tierra-900: #231908;
+
+  --color-verde-50:  #f0f7ed;
+  --color-verde-100: #d4eac8;
+  --color-verde-200: #a3cd8f;
+  --color-verde-300: #6fb05a;
+  --color-verde-400: #4d9038;
+  --color-verde-500: #3a7229;
+  --color-verde-600: #2a561e;
+  --color-verde-700: #1e4015;
+  --color-verde-800: #142b0e;
+
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-body:    'DM Sans', system-ui, sans-serif;
+
+  --sidebar-w: 256px;
+  --header-h: 60px;
+}
+
+/* --- Base --- */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--color-tierra-50);
+  color: var(--color-tierra-900);
+  line-height: 1.5;
+  font-size: 14px;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* --- Layout --- */
+.layout-sidebar { width: var(--sidebar-w); }
+.layout-main    { margin-left: var(--sidebar-w); min-height: 100vh; }
+
+/* --- Sidebar --- */
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--color-tierra-800);
+  position: fixed;
+  top: 0; left: 0;
+  height: 100vh;
+  overflow-y: auto;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-brand {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.sidebar-brand h1 {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  color: var(--color-tierra-100);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.sidebar-brand p {
+  font-size: 0.7rem;
+  color: var(--color-tierra-400);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.nav-section {
+  padding: 0.75rem 1rem 0.25rem;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-tierra-500);
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 1.5rem;
+  font-size: 0.8125rem;
+  color: var(--color-tierra-300);
+  transition: all 0.15s;
+  border-left: 2px solid transparent;
+  text-decoration: none;
+}
+
+.nav-link:hover {
+  color: var(--color-tierra-100);
+  background: rgba(255,255,255,0.06);
+  border-left-color: var(--color-verde-400);
+}
+
+.nav-link.active {
+  color: #fff;
+  background: rgba(111, 176, 90, 0.15);
+  border-left-color: var(--color-verde-400);
+}
+
+.nav-link .nav-icon {
+  width: 1rem;
+  text-align: center;
+  opacity: 0.7;
+}
+
+/* --- Header --- */
+.top-header {
+  height: var(--header-h);
+  background: #fff;
+  border-bottom: 1px solid var(--color-tierra-100);
+  display: flex;
+  align-items: center;
+  padding: 0 1.5rem;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+/* --- Cards --- */
+.card {
+  background: #fff;
+  border: 1px solid var(--color-tierra-100);
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(35,25,8,0.06);
+}
+
+.card-header {
+  border-bottom: 1px solid var(--color-tierra-100);
+  padding-bottom: 1rem;
+  margin-bottom: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.card-header h2 {
+  font-size: 1.1rem;
+  color: var(--color-tierra-800);
+}
+
+/* --- Stat cards (dashboard) --- */
+.stat-card {
+  background: #fff;
+  border-radius: 0.5rem;
+  padding: 1.25rem;
+  border: 1px solid var(--color-tierra-100);
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 3px;
+  height: 100%;
+  background: var(--color-verde-400);
+}
+
+.stat-card .stat-value {
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--color-tierra-900);
+  line-height: 1;
+}
+
+.stat-card .stat-label {
+  font-size: 0.75rem;
+  color: var(--color-tierra-500);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* --- Tablas --- */
+.tabla-base {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.tabla-base thead tr {
+  background: var(--color-tierra-800);
+  color: var(--color-tierra-100);
+}
+
+.tabla-base thead th {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.tabla-base tbody tr {
+  border-bottom: 1px solid var(--color-tierra-100);
+  transition: background 0.1s;
+}
+
+.tabla-base tbody tr:hover {
+  background: var(--color-tierra-50);
+}
+
+.tabla-base tbody td {
+  padding: 0.6875rem 1rem;
+  font-size: 0.8125rem;
+  color: var(--color-tierra-800);
+}
+
+/* --- Inputs --- */
+.input-base {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-tierra-200);
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-family: var(--font-body);
+  color: var(--color-tierra-900);
+  background: #fff;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  outline: none;
+}
+
+.input-base:focus {
+  border-color: var(--color-verde-400);
+  box-shadow: 0 0 0 3px rgba(111,176,90,0.15);
+}
+
+.input-base::placeholder { color: var(--color-tierra-300); }
+.input-base:disabled { background: var(--color-tierra-50); color: var(--color-tierra-400); }
+
+.input-tabla {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--color-tierra-200);
+  border-radius: 0.25rem;
+  font-size: 0.8rem;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.input-tabla:focus { border-color: var(--color-verde-400); }
+.input-tabla:disabled { background: var(--color-tierra-50); }
+
+label.form-label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--color-tierra-600);
+  margin-bottom: 0.3rem;
+  letter-spacing: 0.01em;
+}
+
+/* --- Botones --- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1px solid transparent;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-verde {
+  background: var(--color-verde-600);
+  color: #fff;
+  border-color: var(--color-verde-600);
+}
+.btn-verde:hover { background: var(--color-verde-700); }
+
+.btn-tierra {
+  background: var(--color-tierra-700);
+  color: #fff;
+  border-color: var(--color-tierra-700);
+}
+.btn-tierra:hover { background: var(--color-tierra-800); }
+
+.btn-outline {
+  background: transparent;
+  color: var(--color-tierra-700);
+  border-color: var(--color-tierra-300);
+}
+.btn-outline:hover { background: var(--color-tierra-50); }
+
+.btn-danger {
+  background: #dc2626;
+  color: #fff;
+}
+.btn-danger:hover { background: #b91c1c; }
+
+.btn-sm { padding: 0.35rem 0.75rem; font-size: 0.75rem; }
+.btn-xs { padding: 0.2rem 0.6rem; font-size: 0.7rem; border-radius: 0.25rem; }
+
+/* --- Badges estado --- */
+.badge {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+/* --- Secciones de formulario --- */
+.form-section {
+  background: var(--color-tierra-50);
+  border: 1px solid var(--color-tierra-100);
+  border-radius: 0.5rem;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.form-section-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-tierra-500);
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px dashed var(--color-tierra-200);
+}
+
+/* --- Grid utilidades --- */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+.grid-4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 1rem; }
+
+/* --- Toast --- */
+#toast {
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.3s, transform 0.3s;
+  pointer-events: none;
+}
+
+/* --- Loader --- */
+.loader-spinner {
+  width: 20px; height: 20px;
+  border: 2px solid var(--color-tierra-200);
+  border-top-color: var(--color-verde-500);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* --- Cálculos en vivo --- */
+.calc-box {
+  background: var(--color-tierra-800);
+  color: var(--color-tierra-100);
+  border-radius: 0.375rem;
+  padding: 1rem;
+}
+
+.calc-item { display: flex; justify-content: space-between; margin-bottom: 0.4rem; }
+.calc-item:last-child { margin-bottom: 0; }
+.calc-item .lbl { font-size: 0.75rem; color: var(--color-tierra-400); }
+.calc-item .val { font-size: 0.875rem; font-weight: 600; }
+
+/* --- Scroll personalizado --- */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-tierra-300); border-radius: 3px; }
+
+/* --- Responsive básico --- */
+@media (max-width: 1024px) {
+  .layout-main { margin-left: 0; }
+  .sidebar { transform: translateX(-100%); transition: transform 0.25s; }
+  .sidebar.open { transform: translateX(0); }
+  .grid-4 { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 640px) {
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+}
