@@ -92,10 +92,13 @@ function generarCodigoContrato(): string {
     $pdo  = getDB();
     $year = date('Y');
     $stmt = $pdo->prepare(
-        "SELECT COUNT(*) FROM contratos_compra WHERE codigo LIKE :prefix"
+        "SELECT MAX(CAST(SUBSTRING_INDEX(codigo, '-', -1) AS UNSIGNED))
+         FROM contratos_compra
+         WHERE codigo LIKE :prefix"
     );
     $stmt->execute([':prefix' => "CC-{$year}-%"]);
-    $count = (int)$stmt->fetchColumn() + 1;
+    $max   = (int)$stmt->fetchColumn();
+    $count = $max + 1;
     return sprintf('CC-%s-%03d', $year, $count);
 }
 

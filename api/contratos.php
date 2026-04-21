@@ -1,8 +1,6 @@
 <?php
 
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
+
 
 require_once __DIR__ . '/../bootstrap.php';
 header('Content-Type: application/json; charset=utf-8');
@@ -126,7 +124,8 @@ function handlePost(): void {
         $pesoTotal    = (float)$data['peso_total_kg'];
         $cantidad     = (int)$data['cantidad_animales'];
         $valorKg      = (float)$data['valor_unitario_kg'];  // precio por kg
-
+        
+        $valorTotal = $valorKg * $pesoTotal;
         // Costo de compra por animal = valorKg × peso_promedio
         $pesoPromedio      = $cantidad > 0 ? $pesoTotal / $cantidad : 0;
         $costoCompraAnimal = round($valorKg * $pesoPromedio, 2);
