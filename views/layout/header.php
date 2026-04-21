@@ -1,7 +1,5 @@
 <?php
-// ============================================================
-// views/layout/header.php — Layout responsive mobile-first
-// ============================================================
+
 if (!defined('APP_URL')) {
     require_once __DIR__ . '/../../bootstrap.php';
 }

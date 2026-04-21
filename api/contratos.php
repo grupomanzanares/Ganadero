@@ -1,7 +1,8 @@
 <?php
-// ============================================================
-// api/contratos.php — CRUD contratos de compra
-// ============================================================
+
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 
 require_once __DIR__ . '/../bootstrap.php';
 header('Content-Type: application/json; charset=utf-8');
@@ -26,17 +27,16 @@ function handleGet(string $action, int $id): void {
     $pdo = getDB();
 
     if ($id > 0) {
-        // Detalle de un contrato
         $stmt = $pdo->prepare(
-            'SELECT c.*, 
-                    e.nombre AS empresa_compra,
+            'SELECT c.*,
+                    e.nombre  AS empresa_compra,
                     ep.nombre AS empresa_pago,
                     p.nombre  AS proveedor,
                     t.nombre  AS tipo_animal
              FROM contratos_compra c
-             JOIN empresas e   ON e.id  = c.id_empresa_compra
-             JOIN empresas ep  ON ep.id = c.id_empresa_pago
-             JOIN proveedores p ON p.id = c.id_proveedor
+             JOIN empresas e    ON e.id  = c.id_empresa_compra
+             JOIN empresas ep   ON ep.id = c.id_empresa_pago
+             JOIN proveedores p ON p.id  = c.id_proveedor
              JOIN tipos_animal t ON t.id = c.id_tipo_animal
              WHERE c.id = ?'
         );
@@ -44,18 +44,16 @@ function handleGet(string $action, int $id): void {
         $contrato = $stmt->fetch();
         if (!$contrato) Response::notFound();
 
-        // Socios del contrato
         $stmt2 = $pdo->prepare(
             'SELECT cs.id, cs.porcentaje, s.nombre AS socio, em.nombre AS empresa
              FROM contrato_socios cs
-             JOIN socios s   ON s.id  = cs.id_socio
+             JOIN socios s    ON s.id  = cs.id_socio
              JOIN empresas em ON em.id = s.id_empresa
              WHERE cs.id_contrato = ?'
         );
         $stmt2->execute([$id]);
         $contrato['socios'] = $stmt2->fetchAll();
 
-        // Animales del contrato
         $stmt3 = $pdo->prepare(
             'SELECT id, codigo, peso_inicial_kg, peso_finca_kg,
                     costo_compra_animal, costo_flete_animal, valor_promedio_kg, estado
@@ -67,35 +65,25 @@ function handleGet(string $action, int $id): void {
         Response::success($contrato);
     }
 
-    // Listado con filtros opcionales
     $where  = ['1=1'];
     $params = [];
 
     $estado = input('estado', '', 'GET');
-    if ($estado !== '') {
-        $where[]  = 'c.estado = ?';
-        $params[] = $estado;
-    }
+    if ($estado !== '') { $where[] = 'c.estado = ?'; $params[] = $estado; }
 
     $empresa = (int)input('empresa', 0, 'GET');
-    if ($empresa > 0) {
-        $where[]  = 'c.id_empresa_compra = ?';
-        $params[] = $empresa;
-    }
+    if ($empresa > 0) { $where[] = 'c.id_empresa_compra = ?'; $params[] = $empresa; }
 
-    $sql  = 'SELECT c.id, c.codigo, c.fecha_compra, c.cantidad_animales,
-                    c.peso_total_kg, c.valor_total, c.costo_flete, c.estado,
-                    e.nombre AS empresa_compra,
-                    p.nombre  AS proveedor,
-                    t.nombre  AS tipo_animal
-             FROM contratos_compra c
-             JOIN empresas e    ON e.id  = c.id_empresa_compra
-             JOIN proveedores p ON p.id  = c.id_proveedor
-             JOIN tipos_animal t ON t.id = c.id_tipo_animal
-             WHERE ' . implode(' AND ', $where) .
-             ' ORDER BY c.fecha_compra DESC, c.id DESC';
-
-    $stmt = $pdo->prepare($sql);
+    $stmt = $pdo->prepare(
+        'SELECT c.id, c.codigo, c.fecha_compra, c.cantidad_animales,
+                c.peso_total_kg, c.valor_total, c.costo_flete, c.estado,
+                e.nombre AS empresa_compra, p.nombre AS proveedor, t.nombre AS tipo_animal
+         FROM contratos_compra c
+         JOIN empresas e    ON e.id  = c.id_empresa_compra
+         JOIN proveedores p ON p.id  = c.id_proveedor
+         JOIN tipos_animal t ON t.id = c.id_tipo_animal
+         WHERE ' . implode(' AND ', $where) . ' ORDER BY c.fecha_compra DESC, c.id DESC'
+    );
     $stmt->execute($params);
     Response::success($stmt->fetchAll());
 }
@@ -105,13 +93,18 @@ function handlePost(): void {
     Auth::requirePermission('contratos', 'crear');
     $data = jsonInput();
 
-    // Validaciones básicas
-    $required = ['id_empresa_compra','id_proveedor','id_empresa_pago',
-                 'id_tipo_animal','fecha_compra','cantidad_animales',
-                 'peso_total_kg','valor_unitario_kg','costo_flete','socios'];
+    // Campos obligatorios — costo_flete puede ser 0, se trata aparte
+    $required = [
+        'id_empresa_compra','id_proveedor','id_empresa_pago',
+        'id_tipo_animal','fecha_compra','cantidad_animales',
+        'peso_total_kg','valor_unitario_kg','socios'
+    ];
 
     foreach ($required as $field) {
-        if (empty($data[$field]) && $data[$field] !== 0) {
+        // Considera vacío si no existe, es null, o es string vacío
+        // Permite explícitamente el valor 0 (numérico o string "0")
+        $val = $data[$field] ?? null;
+        if ($val === null || $val === '') {
             Response::error("El campo '{$field}' es obligatorio.");
         }
     }
@@ -120,23 +113,30 @@ function handlePost(): void {
         Response::error('Debe seleccionar al menos un socio.');
     }
 
+    // costo_flete es opcional — si no viene o viene vacío, se trata como 0
+    $flete = isset($data['costo_flete']) && $data['costo_flete'] !== ''
+        ? (float)$data['costo_flete']
+        : 0.0;
+
     $pdo = getDB();
     $pdo->beginTransaction();
 
     try {
-        $codigo          = generarCodigoContrato();
-        $pesoTotal       = (float)$data['peso_total_kg'];
-        $cantidad        = (int)$data['cantidad_animales'];
-        $valorKg         = (float)$data['valor_unitario_kg'];   // precio compra por kg
-        $flete           = (float)$data['costo_flete'];
+        $codigo       = generarCodigoContrato();
+        $pesoTotal    = (float)$data['peso_total_kg'];
+        $cantidad     = (int)$data['cantidad_animales'];
+        $valorKg      = (float)$data['valor_unitario_kg'];  // precio por kg
 
-        // Peso promedio por animal (para asignar a cada cabeza)
-        $pesoPromedio    = $cantidad > 0 ? $pesoTotal / $cantidad : 0;
-        // Costo de compra de cada animal = precio/kg × su peso promedio
+        // Costo de compra por animal = valorKg × peso_promedio
+        $pesoPromedio      = $cantidad > 0 ? $pesoTotal / $cantidad : 0;
         $costoCompraAnimal = round($valorKg * $pesoPromedio, 2);
-        $fletePorAnimal  = $cantidad > 0 ? round($flete / $cantidad, 2) : 0;
+        // Flete por animal (puede ser 0)
+        $fletePorAnimal    = $cantidad > 0 ? round($flete / $cantidad, 2) : 0;
 
-        // Insertar contrato
+        // Valor total del lote = valorKg × pesoTotal
+        // (guardado en contratos_compra como columna generada si existe,
+        //  o calculado aquí para el INSERT)
+
         $stmt = $pdo->prepare(
             'INSERT INTO contratos_compra
              (codigo, id_empresa_compra, id_proveedor, id_empresa_pago,
@@ -151,41 +151,41 @@ function handlePost(): void {
             $data['id_proveedor'],
             $data['id_empresa_pago'],
             $data['id_tipo_animal'],
-            $data['edad_meses'] ?? null,
+            $data['edad_meses']     ?? null,
             $data['fecha_compra'],
             $data['fecha_factura']  ?? null,
             $data['numero_factura'] ?? null,
             $cantidad,
             $pesoTotal,
             $valorKg,
-            $flete,
+            $flete,           // puede ser 0.00
             $data['observacion'] ?? null,
             Auth::user()['id'],
         ]);
         $idContrato = (int)$pdo->lastInsertId();
 
-        // Insertar socios (partes iguales)
-        $cantSocios  = count($data['socios']);
-        $porcentaje  = round(100 / $cantSocios, 2);
-        $stmtSocio   = $pdo->prepare(
+        // Socios (partes iguales)
+        $cantSocios = count($data['socios']);
+        $porcentaje = round(100 / $cantSocios, 2);
+        $stmtS      = $pdo->prepare(
             'INSERT INTO contrato_socios (id_contrato, id_socio, porcentaje) VALUES (?,?,?)'
         );
         foreach ($data['socios'] as $idSocio) {
-            $stmtSocio->execute([$idContrato, (int)$idSocio, $porcentaje]);
+            $stmtS->execute([$idContrato, (int)$idSocio, $porcentaje]);
         }
 
-        // Insertar animales (uno por cabeza)
-        $stmtAnimal = $pdo->prepare(
+        // Animales (uno por cabeza)
+        $stmtA = $pdo->prepare(
             'INSERT INTO animales
              (id_contrato, peso_inicial_kg, costo_compra_animal, costo_flete_animal)
              VALUES (?,?,?,?)'
         );
         for ($i = 0; $i < $cantidad; $i++) {
-            $stmtAnimal->execute([
+            $stmtA->execute([
                 $idContrato,
                 round($pesoPromedio, 2),
-                $costoCompraAnimal,      // valorKg × pesoPromedio
-                $fletePorAnimal,
+                $costoCompraAnimal,  // valorKg × peso_promedio
+                $fletePorAnimal,     // puede ser 0
             ]);
         }
 
@@ -208,23 +208,21 @@ function handlePut(int $id): void {
     $data = jsonInput();
     $pdo  = getDB();
 
-    // Solo permite editar campos de encabezado si está abierto
     $stmt = $pdo->prepare('SELECT estado FROM contratos_compra WHERE id = ?');
     $stmt->execute([$id]);
     $contrato = $stmt->fetch();
     if (!$contrato) Response::notFound();
     if ($contrato['estado'] !== 'abierto') Response::error('Solo se pueden editar contratos abiertos.');
 
-    $stmt = $pdo->prepare(
+    $pdo->prepare(
         'UPDATE contratos_compra
          SET fecha_factura=?, numero_factura=?, observacion=?, edad_meses=?
          WHERE id=?'
-    );
-    $stmt->execute([
-        $data['fecha_factura']   ?? null,
-        $data['numero_factura']  ?? null,
-        $data['observacion']     ?? null,
-        $data['edad_meses']      ?? null,
+    )->execute([
+        $data['fecha_factura']  ?? null,
+        $data['numero_factura'] ?? null,
+        $data['observacion']    ?? null,
+        $data['edad_meses']     ?? null,
         $id,
     ]);
 
@@ -232,7 +230,7 @@ function handlePut(int $id): void {
     Response::success(null, 'Contrato actualizado.');
 }
 
-// ── DELETE ───────────────────────────────────────────────────
+// ── DELETE ────────────────────────────────────────────────────
 function handleDelete(int $id): void {
     Auth::requirePermission('contratos', 'eliminar');
     if ($id <= 0) Response::error('ID inválido.');
@@ -243,13 +241,10 @@ function handleDelete(int $id): void {
     $contrato = $stmt->fetch();
     if (!$contrato) Response::notFound();
 
-    // Solo se puede anular, nunca borrar físicamente si tiene animales
     $stmt2 = $pdo->prepare('SELECT COUNT(*) FROM animales WHERE id_contrato = ?');
     $stmt2->execute([$id]);
     if ((int)$stmt2->fetchColumn() > 0) {
-        // Anular en lugar de eliminar
-        $pdo->prepare('UPDATE contratos_compra SET estado="anulado" WHERE id=?')
-            ->execute([$id]);
+        $pdo->prepare('UPDATE contratos_compra SET estado="anulado" WHERE id=?')->execute([$id]);
         Logger::log('anular', 'contratos_compra', $id);
         Response::success(null, 'Contrato anulado.');
     }
