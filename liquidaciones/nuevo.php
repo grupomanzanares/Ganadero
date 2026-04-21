@@ -926,66 +926,70 @@ async function recalcularFecha() {
   actualizarResumen();
 }
 
-// ════════════════════════════════════════════════════════════
-// CONFIRMAR LIQUIDACIÓN
-// ════════════════════════════════════════════════════════════
 async function confirmarLiquidacion() {
   if (!animalesLiq.length) { App.toast('Agregue al menos un animal.', 'error'); return; }
 
   const fechaVenta = document.getElementById('fecha-venta').value;
-  const valorKg    = document.getElementById('valor-venta-kg').value;
-  const empresa    = document.getElementById('id_empresa_factura').value;
-  const cliente    = document.getElementById('id_cliente').value;
+  if (!fechaVenta) { App.toast('Ingrese la fecha.', 'error'); return; }
 
-  if (!fechaVenta) { App.toast('Ingrese la fecha de venta.', 'error');         return; }
-  if (!empresa)    { App.toast('Seleccione la empresa que factura.', 'error'); return; }
-  if (!cliente)    { App.toast('Seleccione el cliente.', 'error');             return; }
-  if (!valorKg || parseFloat(valorKg) <= 0) {
-    App.toast('Ingrese el precio de venta por kg.', 'error'); return;
+  const soloVentas  = animalesLiq.filter(a => a.tipo_salida !== 'muerte');
+  const soloMuertes = animalesLiq.filter(a => a.tipo_salida === 'muerte');
+
+  // ── Solo si hay animales en venta exigir factura ──────────
+  if (soloVentas.length > 0) {
+    const empresa = document.getElementById('id_empresa_factura').value;
+    const cliente = document.getElementById('id_cliente').value;
+    const valorKg = document.getElementById('valor-venta-kg').value;
+
+    if (!empresa) { App.toast('Seleccione la empresa que factura.', 'error'); return; }
+    if (!cliente) { App.toast('Seleccione el cliente.', 'error');             return; }
+    if (!valorKg || parseFloat(valorKg) <= 0) {
+      App.toast('Ingrese el precio de venta por kg.', 'error'); return;
+    }
+
+    if (modoPeso === 'total') {
+      const pt = parseFloat(document.getElementById('peso-total-lote').value) || 0;
+      if (pt <= 0) { App.toast('Ingrese el peso total de venta.', 'error'); return; }
+    } else {
+      const sinPeso = soloVentas.filter(a => !a.peso_salida_kg || a.peso_salida_kg <= 0);
+      if (sinPeso.length > 0) {
+        sinPeso.forEach(a => {
+          const idx = animalesLiq.indexOf(a);
+          const el  = document.getElementById('inp-sal-' + idx);
+          if (el) { el.classList.add('error'); el.focus(); }
+        });
+        App.toast('Faltan pesos de salida en ' + sinPeso.length + ' animal(es).', 'error'); return;
+      }
+    }
   }
 
-  const soloVentas = animalesLiq.filter(a => a.tipo_salida !== 'muerte');
-
-  if (modoPeso === 'total') {
-    const pt = parseFloat(document.getElementById('peso-total-lote').value) || 0;
-    if (pt <= 0 && soloVentas.length > 0) {
-      App.toast('Ingrese el peso total de venta.', 'error'); return;
-    }
-  } else {
-    const sinPeso = soloVentas.filter(a => !a.peso_salida_kg || a.peso_salida_kg <= 0);
-    if (sinPeso.length > 0) {
-      sinPeso.forEach(a => {
-        const idx = animalesLiq.indexOf(a);
-        const el  = document.getElementById('inp-sal-' + idx);
-        if (el) { el.classList.add('error'); el.focus(); }
-      });
-      App.toast('Faltan pesos de salida en ' + sinPeso.length + ' animal(es).', 'error'); return;
-    }
+  // ── Si son SOLO muertes, confirmar explícitamente ─────────
+  if (soloVentas.length === 0 && soloMuertes.length > 0) {
+    if (!window.confirm(`Va a registrar ${soloMuertes.length} muerte(s). Los costos acumulados se cargarán como pérdida al contrato. ¿Continuar?`)) return;
   }
 
-  const pesoTotalLote = modoPeso === 'total'
-    ? parseFloat(document.getElementById('peso-total-lote').value) || 0
-    : soloVentas.reduce((s, a) => s + (a.peso_salida_kg || 0), 0);
-
-  const idContrato = LIQ_CONTRATO || animalesLiq[0].id_contrato;
+  const pesoTotalLote = soloVentas.length === 0 ? 0
+    : modoPeso === 'total'
+      ? parseFloat(document.getElementById('peso-total-lote').value) || 0
+      : soloVentas.reduce((s, a) => s + (a.peso_salida_kg || 0), 0);
 
   const body = {
-    id_contrato:             idContrato,
-    id_empresa_factura:      empresa,
-    id_cliente:              cliente,
+    id_contrato:             LIQ_CONTRATO || (animalesLiq[0]?.id_contrato ?? null),
+    id_empresa_factura:      soloVentas.length > 0 ? document.getElementById('id_empresa_factura').value : null,
+    id_cliente:              soloVentas.length > 0 ? document.getElementById('id_cliente').value : null,
     id_flete_salida:         document.getElementById('id_flete_salida').value || null,
     numero_factura:          document.getElementById('numero-factura').value  || null,
     fecha_venta:             fechaVenta,
     modo_peso:               modoPeso,
     peso_total_kg:           pesoTotalLote,
-    valor_venta_unitario_kg: parseFloat(valorKg),
+    valor_venta_unitario_kg: soloVentas.length > 0 ? parseFloat(document.getElementById('valor-venta-kg').value) : 0,
     otros_gastos:            parseFloat(document.getElementById('otros-gastos').value) || 0,
     observacion:             document.getElementById('observacion-liq').value || null,
     animales: animalesLiq.map(a => ({
       id_animal:      a.id_animal,
       tipo_salida:    a.tipo_salida || 'venta',
       peso_salida_kg: a.tipo_salida === 'muerte' ? 0 : (a.peso_salida_kg || 0),
-      peso_canal_kg:  a.peso_canal_kg || 0,   // campo estadístico
+      peso_canal_kg:  a.peso_canal_kg || 0,
     })),
   };
 
@@ -999,7 +1003,7 @@ async function confirmarLiquidacion() {
     App.toast(res.data.message, 'success');
     if (res.data.data?.contrato_cerrado) App.toast('¡Contrato cerrado!', 'success');
     setTimeout(() => {
-      window.location.href = APP_URL + '/contratos/detalle.php?id=' + idContrato;
+      window.location.href = APP_URL + '/contratos/detalle.php?id=' + (LIQ_CONTRATO || animalesLiq[0]?.id_contrato);
     }, 1200);
   } else {
     App.toast((res.data?.message) || 'Error al guardar.', 'error');

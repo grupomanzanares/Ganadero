@@ -118,9 +118,9 @@ function handleGet(string $action, int $id): void {
             'SELECT l.*, c.codigo AS contrato_codigo,
                     e.nombre AS empresa_factura, cl.nombre AS cliente
              FROM liquidaciones l
-             JOIN contratos_compra c ON c.id = l.id_contrato
-             JOIN empresas e          ON e.id = l.id_empresa_factura
-             JOIN clientes cl         ON cl.id = l.id_cliente
+             JOIN contratos_compra c  ON c.id  = l.id_contrato
+             LEFT JOIN empresas e     ON e.id  = l.id_empresa_factura
+             LEFT JOIN clientes cl    ON cl.id = l.id_cliente
              WHERE l.id = ?'
         );
         $stmt->execute([$id]);
@@ -155,9 +155,9 @@ function handleGet(string $action, int $id): void {
                 cl.nombre AS cliente,
                 (SELECT COUNT(*) FROM liquidacion_animales la WHERE la.id_liquidacion = l.id) AS total_animales
          FROM liquidaciones l
-         JOIN contratos_compra c ON c.id = l.id_contrato
-         JOIN empresas e          ON e.id = l.id_empresa_factura
-         JOIN clientes cl         ON cl.id = l.id_cliente
+         JOIN contratos_compra c  ON c.id  = l.id_contrato
+         LEFT JOIN empresas e     ON e.id  = l.id_empresa_factura
+         LEFT JOIN clientes cl    ON cl.id = l.id_cliente
          WHERE ' . implode(' AND ', $where) . ' ORDER BY l.fecha_venta DESC'
     );
     $stmt->execute($params);
@@ -169,8 +169,7 @@ function handlePost(): void {
     Auth::requirePermission('liquidaciones', 'crear');
     $data = jsonInput();
 
-    $required = ['id_contrato','id_empresa_factura','id_cliente',
-                 'fecha_venta','valor_venta_unitario_kg','animales'];
+    $required = ['id_contrato', 'fecha_venta', 'animales'];
 
     foreach ($required as $field) {
         if (empty($data[$field]) && $data[$field] !== 0) {
@@ -182,17 +181,30 @@ function handlePost(): void {
         Response::error('Debe incluir al menos un animal en la liquidación.');
     }
 
+    // Determinar si todos los animales son muertes
+    $soloMuertes = array_filter($data['animales'], fn($a) => ($a['tipo_salida'] ?? 'venta') === 'muerte');
+    $esSoloMuertes = count($soloMuertes) === count($data['animales']);
+
+    // Validar campos de venta solo cuando hay animales vendidos
+    if (!$esSoloMuertes) {
+        foreach (['id_empresa_factura', 'id_cliente', 'valor_venta_unitario_kg'] as $field) {
+            if (empty($data[$field]) && $data[$field] !== 0) {
+                Response::error("El campo '{$field}' es obligatorio.");
+            }
+        }
+    }
+
     // ── Modo de peso: 'total' (un peso para todo el lote) o 'individual' (por animal)
     $modoPeso     = $data['modo_peso'] ?? 'total'; // 'total' | 'individual'
     $pesoTotalLote = (float)($data['peso_total_kg'] ?? 0);
     $cantAnimales = count($data['animales']);
 
-    // Validar que haya peso según el modo
-    if ($modoPeso === 'total') {
+    // Validar que haya peso según el modo (solo cuando hay ventas)
+    if (!$esSoloMuertes && $modoPeso === 'total') {
         if ($pesoTotalLote <= 0) {
             Response::error('Ingrese el peso total de los animales a liquidar.');
         }
-    } else {
+    } elseif (!$esSoloMuertes) {
         // modo individual: cada animal debe traer peso_salida_kg
         foreach ($data['animales'] as $idx => $item) {
             if (($item['tipo_salida'] ?? 'venta') === 'venta' && empty($item['peso_salida_kg'])) {
@@ -206,7 +218,7 @@ function handlePost(): void {
         ));
     }
 
-    $valorUnitKg  = (float)$data['valor_venta_unitario_kg'];
+    $valorUnitKg  = (float)($data['valor_venta_unitario_kg'] ?? 0);
     $otrosGastos  = (float)($data['otros_gastos'] ?? 0);   // total otros gastos de la venta
     $pdo = getDB();
     $pdo->beginTransaction();
@@ -243,8 +255,8 @@ function handlePost(): void {
         );
         $stmt->execute([
             $data['id_contrato'],
-            $data['id_empresa_factura'],
-            $data['id_cliente'],
+            !empty($data['id_empresa_factura']) ? $data['id_empresa_factura'] : null,
+            !empty($data['id_cliente'])         ? $data['id_cliente']         : null,
             $idFlete,
             $data['numero_factura'] ?? null,
             $data['fecha_venta'],
