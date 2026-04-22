@@ -79,6 +79,8 @@ require_once __DIR__ . '/../views/layout/header.php';
 
 <script src="<?= APP_URL ?>/js/app.js"></script>
 <script>
+const CAN_ELIMINAR = <?= Auth::can('contratos','eliminar') ? 'true' : 'false' ?>;
+
 const ContratosListado = (() => {
   const API     = APP_URL + '/api/contratos.php';
   const API_CAT = APP_URL + '/api/catalogos.php';
@@ -129,12 +131,27 @@ const ContratosListado = (() => {
                     class="btn btn-verde btn-xs">Liquidar</a>`
               : `<a href="${APP_URL}/reportes/cierres.php?contrato=${r.id}"
                     class="btn btn-outline btn-xs">Cierre</a>`}
+            ${CAN_ELIMINAR && r.estado !== 'anulado'
+              ? `<button onclick="eliminarContrato(${r.id})"
+                         class="btn btn-xs bg-red-100 text-red-700 hover:bg-red-200">Eliminar</button>`
+              : ''}
           </div>` },
     ]);
   };
 
   return { init, cargar };
 })();
+
+async function eliminarContrato(id) {
+  if (!App.confirm('¿Está seguro de que desea eliminar este contrato? Esta acción no se puede deshacer.')) return;
+  const res = await App.del(APP_URL + `/api/contratos.php?id=${id}`);
+  if (res.ok) {
+    App.toast(res.data.message, 'success');
+    ContratosListado.cargar();
+  } else {
+    App.toast(res.data.message, 'error');
+  }
+}
 
 ContratosListado.init();
 </script>

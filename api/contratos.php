@@ -240,6 +240,12 @@ function handleDelete(int $id): void {
     $contrato = $stmt->fetch();
     if (!$contrato) Response::notFound();
 
+    $stmtLiq = $pdo->prepare('SELECT COUNT(*) FROM liquidaciones WHERE id_contrato = ?');
+    $stmtLiq->execute([$id]);
+    if ((int)$stmtLiq->fetchColumn() > 0) {
+        Response::error('No se puede eliminar el contrato porque tiene liquidaciones registradas.', 422);
+    }
+
     $stmt2 = $pdo->prepare('SELECT COUNT(*) FROM animales WHERE id_contrato = ?');
     $stmt2->execute([$id]);
     if ((int)$stmt2->fetchColumn() > 0) {

@@ -110,8 +110,9 @@ require_once __DIR__ . '/../views/layout/header.php';
 
 <script src="<?= APP_URL ?>/js/app.js"></script>
 <script>
-const ID        = <?= $id ?>;
-let contratoData = null;
+const ID           = <?= $id ?>;
+const CAN_ELIMINAR = <?= Auth::can('contratos','eliminar') ? 'true' : 'false' ?>;
+let contratoData   = null;
 
 function showTab(tab) {
   ['animales','socios','liquidaciones'].forEach(t => {
@@ -160,6 +161,12 @@ function showTab(tab) {
                 class="btn btn-verde btn-sm">Liquidar animales</a>`
           : `<a href="${APP_URL}/reportes/cierres.php?contrato=${ID}"
                 class="btn btn-tierra btn-sm">Ver cierre</a>`}
+        ${CAN_ELIMINAR && c.estado !== 'anulado'
+          ? `<button onclick="eliminarContrato()"
+                     class="btn btn-sm bg-red-100 text-red-700 hover:bg-red-200 border border-red-200">
+               Eliminar contrato
+             </button>`
+          : ''}
       </div>
     </div>
     <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mt-5 pt-4 border-t border-tierra-100">
@@ -216,6 +223,7 @@ function showTab(tab) {
 
   // Liquidaciones
   const resLiq = await App.get(APP_URL + '/api/liquidaciones.php', { contrato: ID });
+
   if (resLiq.ok) {
     App.renderTable('tbody-liquidaciones', resLiq.data.data, [
       { key: 'numero_factura', render: r => r.numero_factura || '—' },
@@ -229,10 +237,31 @@ function showTab(tab) {
                        anulada:'bg-red-100 text-red-600'}[r.estado]||'';
           return `<span class="px-2 py-0.5 rounded-full text-xs font-semibold ${cls}">${r.estado}</span>`;
       }},
-      { render: r => `<a href="${APP_URL}/liquidaciones/detalle.php?id=${r.id}"
-                         class="btn btn-tierra btn-xs">Ver</a>` },
+      { render: r => `
+        <div class="flex gap-1">
+          <a href="${APP_URL}/liquidaciones/detalle.php?id=${r.id}"
+             class="btn btn-tierra btn-xs">Ver</a>
+          <a href="${APP_URL}/liquidaciones/imprimir.php?id=${r.id}" target="_blank"
+             class="btn btn-xs btn-outline" title="Imprimir">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+            </svg>
+          </a>
+        </div>` },
     ]);
   }
 })();
+
+async function eliminarContrato() {
+  if (!App.confirm('¿Está seguro de que desea eliminar este contrato? Esta acción no se puede deshacer.')) return;
+  const res = await App.del(APP_URL + `/api/contratos.php?id=${ID}`);
+  if (res.ok) {
+    App.toast(res.data.message, 'success');
+    setTimeout(() => { window.location.href = APP_URL + '/contratos/index.php'; }, 1200);
+  } else {
+    App.toast(res.data.message, 'error');
+  }
+}
 </script>
 <?php require_once __DIR__ . '/../views/layout/footer.php'; ?>

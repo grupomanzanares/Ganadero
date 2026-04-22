@@ -1,0 +1,736 @@
+<?php
+// ============================================================
+// liquidaciones/imprimir.php — Documento de liquidación
+// ============================================================
+require_once __DIR__ . '/../bootstrap.php';
+Auth::requirePermission('liquidaciones', 'ver');
+
+$id = (int)($_GET['id'] ?? 0);
+if ($id <= 0) { http_response_code(400); die('ID inválido.'); }
+
+$pdo = getDB();
+
+// ── Cabecera de la liquidación ────────────────────────────
+$stmt = $pdo->prepare(
+    'SELECT l.*,
+            c.codigo AS contrato_codigo, c.id AS id_contrato,
+            c.fecha_compra, c.cantidad_animales AS total_comprado,
+            e.nombre  AS empresa_factura,  e.nit AS nit_empresa,
+            cl.nombre AS cliente,          cl.nit AS nit_cliente,
+            ec.nombre AS empresa_compra
+     FROM liquidaciones l
+     JOIN contratos_compra c ON c.id  = l.id_contrato
+     LEFT JOIN empresas  e  ON e.id   = l.id_empresa_factura
+     LEFT JOIN clientes  cl ON cl.id  = l.id_cliente
+     LEFT JOIN empresas  ec ON ec.id  = c.id_empresa_compra
+     WHERE l.id = ?'
+);
+$stmt->execute([$id]);
+$liq = $stmt->fetch(PDO::FETCH_ASSOC);
+if (!$liq) { http_response_code(404); die('Liquidación no encontrada.'); }
+
+// ── Animales ──────────────────────────────────────────────
+$stmtA = $pdo->prepare(
+    'SELECT la.*, a.codigo AS animal_codigo
+     FROM liquidacion_animales la
+     JOIN animales a ON a.id = la.id_animal
+     WHERE la.id_liquidacion = ?
+     ORDER BY la.tipo_salida DESC, la.id'
+);
+$stmtA->execute([$id]);
+$animales = $stmtA->fetchAll(PDO::FETCH_ASSOC);
+
+// ── Totales ───────────────────────────────────────────────
+$stmtT = $pdo->prepare(
+    'SELECT
+        COUNT(*)                                               AS total_animales,
+        SUM(CASE WHEN tipo_salida="venta"  THEN 1 ELSE 0 END) AS vendidos,
+        SUM(CASE WHEN tipo_salida="muerte" THEN 1 ELSE 0 END) AS muertos,
+        ROUND(SUM(valor_venta),2)      AS total_ingresos,
+        ROUND(SUM(costo_compra),2)     AS tot_compra,
+        ROUND(SUM(costo_flete_entrada),2) AS tot_flete_ent,
+        ROUND(SUM(costo_manutencion),2)   AS tot_manutencion,
+        ROUND(SUM(costo_flete_salida),2)  AS tot_flete_sal,
+        ROUND(SUM(otros_gastos),2)        AS tot_otros,
+        ROUND(SUM(costo_total),2)         AS total_costos,
+        ROUND(SUM(ganancia),2)            AS total_ganancia,
+        ROUND(AVG(dias_manutencion),0)    AS promedio_dias
+     FROM liquidacion_animales WHERE id_liquidacion = ?'
+);
+$stmtT->execute([$id]);
+$tot = $stmtT->fetch(PDO::FETCH_ASSOC);
+
+// ── Socios ────────────────────────────────────────────────
+$stmtS = $pdo->prepare(
+    'SELECT cs.porcentaje, s.nombre AS socio, em.nombre AS empresa,
+            ROUND(? * cs.porcentaje / 100, 2) AS ganancia_estimada
+     FROM contrato_socios cs
+     JOIN socios   s  ON s.id  = cs.id_socio
+     JOIN empresas em ON em.id = s.id_empresa
+     WHERE cs.id_contrato = ?'
+);
+$stmtS->execute([(float)$tot['total_ganancia'], $liq['id_contrato']]);
+$socios = $stmtS->fetchAll(PDO::FETCH_ASSOC);
+
+// ── Helpers ───────────────────────────────────────────────
+function m(mixed $n): string {
+    return '$ ' . number_format((float)$n, 0, ',', '.');
+}
+function kg(mixed $n): string {
+    return number_format((float)$n, 2, ',', '.') . ' kg';
+}
+function fdate(?string $d): string {
+    if (!$d) return '—';
+    [$y, $mo, $da] = explode('-', $d);
+    return "{$da}/{$mo}/{$y}";
+}
+
+$esGanancia   = (float)$tot['total_ganancia'] >= 0;
+$numFactura   = $liq['numero_factura'] ?: 'S/N';
+$fechaImpresion = date('d/m/Y H:i');
+?>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Liquidación <?= htmlspecialchars($numFactura) ?> — GanaderoPro</title>
+  <style>
+    /* ─── Reset & base ──────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-size: 11px;
+      color: #1a1a2e;
+      background: #f0f0f0;
+      padding: 20px;
+    }
+
+    /* ─── Hoja ──────────────────────────────────────────── */
+    .page {
+      background: #fff;
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0 auto;
+      padding: 14mm 14mm 12mm;
+      box-shadow: 0 4px 24px rgba(0,0,0,.12);
+      position: relative;
+    }
+
+    /* ─── Cabecera del documento ────────────────────────── */
+    .doc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 2.5px solid #1e293b;
+      padding-bottom: 10px;
+      margin-bottom: 12px;
+    }
+    .brand-name {
+      font-size: 22px;
+      font-weight: 800;
+      color: #1e293b;
+      letter-spacing: -.5px;
+      line-height: 1;
+    }
+    .brand-name span { color: #059669; }
+    .brand-sub {
+      font-size: 9px;
+      color: #64748b;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      margin-top: 3px;
+    }
+    .doc-type {
+      text-align: right;
+    }
+    .doc-type h1 {
+      font-size: 16px;
+      font-weight: 800;
+      color: #1e293b;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .doc-type .factura-num {
+      font-size: 18px;
+      font-weight: 900;
+      color: #059669;
+      letter-spacing: .02em;
+    }
+    .doc-type .doc-estado {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-top: 4px;
+    }
+    .estado-confirmada { background: #d1fae5; color: #065f46; }
+    .estado-borrador   { background: #fef9c3; color: #854d0e; }
+    .estado-anulada    { background: #fee2e2; color: #991b1b; }
+
+    /* ─── Bloque info partes ────────────────────────────── */
+    .partes {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 6px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+    .parte {
+      padding: 9px 12px;
+      border-right: 1px solid #e2e8f0;
+    }
+    .parte:last-child { border-right: none; }
+    .parte-label {
+      font-size: 8px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      color: #94a3b8;
+      margin-bottom: 4px;
+    }
+    .parte-nombre {
+      font-size: 12px;
+      font-weight: 700;
+      color: #1e293b;
+    }
+    .parte-nit {
+      font-size: 9px;
+      color: #64748b;
+      margin-top: 1px;
+    }
+
+    /* ─── Datos del contrato ────────────────────────────── */
+    .datos-contrato {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+      border: 1.5px solid #e2e8f0;
+      border-top: none;
+      margin-bottom: 14px;
+      border-radius: 0 0 6px 6px;
+      overflow: hidden;
+    }
+    .dato {
+      padding: 7px 12px;
+      border-right: 1px solid #e2e8f0;
+    }
+    .dato:last-child { border-right: none; }
+    .dato-label {
+      font-size: 8px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: #94a3b8;
+      font-weight: 600;
+    }
+    .dato-val {
+      font-size: 11px;
+      font-weight: 600;
+      color: #334155;
+      margin-top: 2px;
+    }
+    .dato-val.mono { font-family: 'Courier New', monospace; font-weight: 700; color: #1e293b; }
+
+    /* ─── Sección titulada ──────────────────────────────── */
+    .seccion-titulo {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      color: #fff;
+      background: #1e293b;
+      padding: 5px 10px;
+      border-radius: 4px 4px 0 0;
+      margin-bottom: 0;
+    }
+
+    /* ─── Tabla de animales ─────────────────────────────── */
+    .tabla-animales {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid #e2e8f0;
+      font-size: 9.5px;
+      margin-bottom: 14px;
+    }
+    .tabla-animales thead tr {
+      background: #f1f5f9;
+    }
+    .tabla-animales thead th {
+      padding: 5px 6px;
+      text-align: right;
+      font-size: 8px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: #475569;
+      border-bottom: 1.5px solid #cbd5e1;
+      white-space: nowrap;
+    }
+    .tabla-animales thead th:first-child { text-align: left; }
+    .tabla-animales tbody tr {
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .tabla-animales tbody tr:last-child { border-bottom: none; }
+    .tabla-animales tbody tr.muerte { background: #fff8f8; }
+    .tabla-animales tbody td {
+      padding: 4px 6px;
+      text-align: right;
+      color: #334155;
+    }
+    .tabla-animales tbody td:first-child { text-align: left; }
+    .tabla-animales tfoot tr {
+      background: #1e293b;
+      color: #e2e8f0;
+    }
+    .tabla-animales tfoot td {
+      padding: 5px 6px;
+      text-align: right;
+      font-weight: 700;
+      font-size: 9.5px;
+    }
+    .tabla-animales tfoot td:first-child { text-align: left; }
+    .badge-muerte {
+      display: inline-block;
+      background: #fee2e2; color: #991b1b;
+      padding: 1px 5px; border-radius: 3px;
+      font-size: 7.5px; font-weight: 700; text-transform: uppercase;
+    }
+    .badge-venta {
+      display: inline-block;
+      background: #d1fae5; color: #065f46;
+      padding: 1px 5px; border-radius: 3px;
+      font-size: 7.5px; font-weight: 700; text-transform: uppercase;
+    }
+    .ganancia-pos { color: #059669; font-weight: 700; }
+    .ganancia-neg { color: #dc2626; font-weight: 700; }
+
+    /* ─── Bloque financiero ─────────────────────────────── */
+    .financiero {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .costos-tabla {
+      border: 1.5px solid #e2e8f0;
+      border-radius: 0 0 6px 6px;
+      overflow: hidden;
+    }
+    .costos-tabla table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10px;
+    }
+    .costos-tabla tr {
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .costos-tabla tr:last-child { border-bottom: none; }
+    .costos-tabla td {
+      padding: 5px 10px;
+    }
+    .costos-tabla td:last-child { text-align: right; font-weight: 600; }
+    .costos-tabla .total-row {
+      background: #1e293b;
+      color: #fff;
+      font-weight: 800;
+      font-size: 11px;
+    }
+    .costos-tabla .total-row td:last-child { color: #fca5a5; }
+
+    .resumen-resultado {
+      border: 1.5px solid #e2e8f0;
+      border-radius: 0 0 6px 6px;
+      overflow: hidden;
+    }
+    .ingresos-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .ingresos-row .lbl { font-size: 9px; color: #64748b; text-transform: uppercase; letter-spacing: .07em; }
+    .ingresos-row .val { font-size: 13px; font-weight: 800; }
+    .val-ingresos { color: #059669; }
+    .val-costos   { color: #dc2626; }
+    .resultado-final {
+      padding: 10px 12px;
+      text-align: center;
+    }
+    .resultado-final .rf-label {
+      font-size: 9px; text-transform: uppercase;
+      letter-spacing: .1em; font-weight: 700;
+      margin-bottom: 3px;
+    }
+    .resultado-final .rf-valor {
+      font-size: 24px; font-weight: 900; letter-spacing: -.5px;
+    }
+    .ganancia-bg  { background: #ecfdf5; border-top: 2px solid #059669; }
+    .perdida-bg   { background: #fff1f2; border-top: 2px solid #dc2626; }
+    .rf-label-g   { color: #059669; }
+    .rf-label-p   { color: #dc2626; }
+    .rf-valor-g   { color: #059669; }
+    .rf-valor-p   { color: #dc2626; }
+
+    /* ─── Socios ────────────────────────────────────────── */
+    .socios-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 8px;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 0 0 6px 6px;
+      padding: 10px;
+      margin-bottom: 14px;
+    }
+    .socio-card {
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 8px 10px;
+      text-align: center;
+    }
+    .socio-inicial {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 14px;
+      margin: 0 auto 6px;
+    }
+    .inicial-g { background: #d1fae5; color: #059669; }
+    .inicial-p { background: #fee2e2; color: #dc2626; }
+    .socio-nombre { font-size: 10px; font-weight: 700; color: #1e293b; }
+    .socio-empresa { font-size: 8.5px; color: #94a3b8; }
+    .socio-pct { font-size: 9px; color: #64748b; margin: 3px 0 1px; }
+    .socio-gan { font-size: 14px; font-weight: 900; }
+    .socio-gan-g { color: #059669; }
+    .socio-gan-p { color: #dc2626; }
+
+    /* ─── Observación ───────────────────────────────────── */
+    .obs-box {
+      border: 1px solid #fde68a;
+      background: #fffbeb;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 10px;
+      color: #78350f;
+      margin-bottom: 14px;
+    }
+    .obs-box strong { display: block; font-size: 8px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 3px; color: #92400e; }
+
+    /* ─── Pie de página ─────────────────────────────────── */
+    .doc-footer {
+      border-top: 1px solid #e2e8f0;
+      padding-top: 8px;
+      margin-top: auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      font-size: 8.5px;
+      color: #94a3b8;
+    }
+
+    /* ─── Botón imprimir (solo pantalla) ────────────────── */
+    .print-bar {
+      width: 210mm;
+      margin: 0 auto 12px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .btn-print {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 18px; border-radius: 6px;
+      background: #059669; color: #fff;
+      font-size: 13px; font-weight: 600;
+      cursor: pointer; border: none;
+    }
+    .btn-print:hover { background: #047857; }
+    .btn-back {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 14px; border-radius: 6px;
+      background: #fff; color: #334155;
+      font-size: 13px; font-weight: 500;
+      cursor: pointer; border: 1px solid #e2e8f0;
+      text-decoration: none;
+    }
+    .btn-back:hover { background: #f8fafc; }
+
+    /* ─── Salto de página ───────────────────────────────── */
+    .no-break { page-break-inside: avoid; }
+
+    /* ─── Print ─────────────────────────────────────────── */
+    @media print {
+      body { background: white; padding: 0; margin: 0; font-size: 10px; }
+      .page { box-shadow: none; margin: 0; padding: 10mm 12mm; width: 100%; min-height: auto; }
+      .print-bar { display: none; }
+      .tabla-animales { font-size: 8.5px; }
+      thead { display: table-header-group; }
+      tfoot { display: table-footer-group; }
+      .no-break { page-break-inside: avoid; }
+      .seccion-titulo { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .tabla-animales thead tr,
+      .tabla-animales tfoot tr,
+      .costos-tabla .total-row,
+      .resultado-final,
+      .socio-inicial { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      @page { margin: 8mm 10mm; size: A4; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Barra de acción (solo pantalla) -->
+<div class="print-bar">
+  <button class="btn-print" onclick="window.print()">
+    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+        d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+    </svg>
+    Imprimir
+  </button>
+  <a href="javascript:history.back()" class="btn-back">
+    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+    </svg>
+    Volver
+  </a>
+  <span style="font-size:12px;color:#64748b;margin-left:4px">
+    Liquidación <?= htmlspecialchars($numFactura) ?> — <?= htmlspecialchars($liq['empresa_factura'] ?? 'Sin empresa') ?>
+  </span>
+</div>
+
+<!-- ══ HOJA ═══════════════════════════════════════════════ -->
+<div class="page">
+
+  <!-- ENCABEZADO DEL DOCUMENTO -->
+  <div class="doc-header">
+    <div>
+      <div class="brand-name">Ganader<span>o</span>Pro</div>
+      <div class="brand-sub">Sistema de gestión ganadera</div>
+    </div>
+    <div class="doc-type">
+      <h1>Liquidación de venta</h1>
+      <div class="factura-num">
+        <?= $liq['numero_factura'] ? 'Factura N.° ' . htmlspecialchars($liq['numero_factura']) : 'Sin número de factura' ?>
+      </div>
+      <div>
+        <span class="doc-estado estado-<?= $liq['estado'] ?>">
+          <?= ucfirst($liq['estado']) ?>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- PARTES: empresa factura / cliente -->
+  <div class="partes no-break">
+    <div class="parte">
+      <div class="parte-label">Empresa que factura</div>
+      <div class="parte-nombre"><?= htmlspecialchars($liq['empresa_factura'] ?? '—') ?></div>
+      <?php if (!empty($liq['nit_empresa'])): ?>
+      <div class="parte-nit">NIT: <?= htmlspecialchars($liq['nit_empresa']) ?></div>
+      <?php endif; ?>
+    </div>
+    <div class="parte">
+      <div class="parte-label">Cliente / Comprador</div>
+      <div class="parte-nombre"><?= htmlspecialchars($liq['cliente'] ?? '—') ?></div>
+      <?php if (!empty($liq['nit_cliente'])): ?>
+      <div class="parte-nit">NIT: <?= htmlspecialchars($liq['nit_cliente']) ?></div>
+      <?php endif; ?>
+    </div>
+  </div>
+
+  <!-- DATOS DEL CONTRATO -->
+  <div class="datos-contrato no-break">
+    <div class="dato">
+      <div class="dato-label">Contrato</div>
+      <div class="dato-val mono"><?= htmlspecialchars($liq['contrato_codigo']) ?></div>
+    </div>
+    <div class="dato">
+      <div class="dato-label">Empresa compra</div>
+      <div class="dato-val"><?= htmlspecialchars($liq['empresa_compra'] ?? '—') ?></div>
+    </div>
+    <div class="dato">
+      <div class="dato-label">Fecha de venta</div>
+      <div class="dato-val"><?= fdate($liq['fecha_venta']) ?></div>
+    </div>
+    <div class="dato">
+      <div class="dato-label">Valor venta / kg</div>
+      <div class="dato-val"><?= m($liq['valor_venta_unitario_kg']) ?>/kg</div>
+    </div>
+  </div>
+
+  <!-- DETALLE DE ANIMALES -->
+  <div class="seccion-titulo">Detalle de animales — <?= count($animales) ?> cabezas
+    (<?= $tot['vendidos'] ?> venta<?= $tot['vendidos'] != 1 ? 's' : '' ?><?= $tot['muertos'] > 0 ? ', ' . $tot['muertos'] . ' muerte' . ($tot['muertos'] != 1 ? 's' : '') : '' ?>)
+  </div>
+  <table class="tabla-animales">
+    <thead>
+      <tr>
+        <th style="text-align:left;width:80px">Código</th>
+        <th style="width:46px">Tipo</th>
+        <th>Días<br>mant.</th>
+        <th>Costo<br>compra</th>
+        <th>Flete<br>entrada</th>
+        <th>Manu-<br>tención</th>
+        <th>Flete<br>salida</th>
+        <th>Otros<br>gastos</th>
+        <th>Costo<br>total</th>
+        <th>Peso<br>salida</th>
+        <th>Valor<br>venta</th>
+        <th>Ganancia</th>
+      </tr>
+    </thead>
+    <tbody>
+      <?php foreach ($animales as $a):
+        $gan    = (float)$a['ganancia'];
+        $esMuerte = $a['tipo_salida'] === 'muerte';
+      ?>
+      <tr class="<?= $esMuerte ? 'muerte' : '' ?>">
+        <td style="font-family:monospace;font-weight:600;font-size:9px">
+          <?= htmlspecialchars($a['animal_codigo'] ?: ('#'.$a['id_animal'])) ?>
+        </td>
+        <td style="text-align:center">
+          <span class="<?= $esMuerte ? 'badge-muerte' : 'badge-venta' ?>">
+            <?= $esMuerte ? 'Muerte' : 'Venta' ?>
+          </span>
+        </td>
+        <td><?= (int)$a['dias_manutencion'] ?></td>
+        <td><?= m($a['costo_compra']) ?></td>
+        <td><?= m($a['costo_flete_entrada']) ?></td>
+        <td><?= m($a['costo_manutencion']) ?></td>
+        <td><?= m($a['costo_flete_salida']) ?></td>
+        <td><?= m($a['otros_gastos']) ?></td>
+        <td style="color:#dc2626;font-weight:700"><?= m($a['costo_total']) ?></td>
+        <td><?= $esMuerte ? '—' : kg($a['peso_salida_kg']) ?></td>
+        <td style="color:#059669;font-weight:600"><?= $esMuerte ? '—' : m($a['valor_venta']) ?></td>
+        <td class="<?= $gan >= 0 ? 'ganancia-pos' : 'ganancia-neg' ?>"><?= m($gan) ?></td>
+      </tr>
+      <?php endforeach; ?>
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="3" style="text-align:left">TOTALES</td>
+        <td><?= m($tot['tot_compra']) ?></td>
+        <td><?= m($tot['tot_flete_ent']) ?></td>
+        <td><?= m($tot['tot_manutencion']) ?></td>
+        <td><?= m($tot['tot_flete_sal']) ?></td>
+        <td><?= m($tot['tot_otros']) ?></td>
+        <td style="color:#fca5a5"><?= m($tot['total_costos']) ?></td>
+        <td><?= kg(array_sum(array_column($animales,'peso_salida_kg'))) ?></td>
+        <td style="color:#6ee7b7"><?= m($tot['total_ingresos']) ?></td>
+        <td style="color:<?= $esGanancia ? '#6ee7b7' : '#fca5a5' ?>"><?= m($tot['total_ganancia']) ?></td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <!-- RESUMEN FINANCIERO -->
+  <div class="financiero no-break">
+
+    <!-- Desglose de costos -->
+    <div>
+      <div class="seccion-titulo">Desglose de costos</div>
+      <div class="costos-tabla">
+        <table>
+          <tr><td>Costo compra animales</td><td><?= m($tot['tot_compra']) ?></td></tr>
+          <tr><td>Flete de entrada</td>     <td><?= m($tot['tot_flete_ent']) ?></td></tr>
+          <tr><td>Manutención (prom. <?= (int)$tot['promedio_dias'] ?> días)</td>
+                                            <td><?= m($tot['tot_manutencion']) ?></td></tr>
+          <tr><td>Flete de salida</td>      <td><?= m($tot['tot_flete_sal']) ?></td></tr>
+          <tr><td>Otros gastos</td>         <td><?= m($tot['tot_otros']) ?></td></tr>
+          <tr class="total-row">
+            <td>COSTO TOTAL</td>
+            <td><?= m($tot['total_costos']) ?></td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Resultado final -->
+    <div>
+      <div class="seccion-titulo">Resultado de la venta</div>
+      <div class="resumen-resultado">
+        <div class="ingresos-row">
+          <span class="lbl">Total ingresos venta</span>
+          <span class="val val-ingresos"><?= m($tot['total_ingresos']) ?></span>
+        </div>
+        <div class="ingresos-row">
+          <span class="lbl">Total costos</span>
+          <span class="val val-costos"><?= m($tot['total_costos']) ?></span>
+        </div>
+        <div class="ingresos-row" style="border-bottom:none;padding-bottom:4px">
+          <span class="lbl">Animales: <?= $tot['total_animales'] ?> cab.
+            (<?= $tot['vendidos'] ?> vendidos<?= $tot['muertos'] > 0 ? ', '.$tot['muertos'].' muertos' : '' ?>)
+          </span>
+          <span style="font-size:9px;color:#64748b"><?= kg($liq['peso_total_kg']) ?></span>
+        </div>
+        <div class="resultado-final <?= $esGanancia ? 'ganancia-bg' : 'perdida-bg' ?>">
+          <div class="rf-label <?= $esGanancia ? 'rf-label-g' : 'rf-label-p' ?>">
+            <?= $esGanancia ? 'Ganancia neta' : 'Pérdida neta' ?>
+          </div>
+          <div class="rf-valor <?= $esGanancia ? 'rf-valor-g' : 'rf-valor-p' ?>">
+            <?= m($tot['total_ganancia']) ?>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- DISTRIBUCIÓN POR SOCIOS -->
+  <?php if (!empty($socios)): ?>
+  <div class="no-break">
+    <div class="seccion-titulo">Distribución por socios</div>
+    <div class="socios-grid">
+      <?php foreach ($socios as $s):
+        $sg = (float)$s['ganancia_estimada'];
+        $sgPos = $sg >= 0;
+      ?>
+      <div class="socio-card">
+        <div class="socio-inicial <?= $sgPos ? 'inicial-g' : 'inicial-p' ?>">
+          <?= mb_strtoupper(mb_substr($s['socio'], 0, 1)) ?>
+        </div>
+        <div class="socio-nombre"><?= htmlspecialchars($s['socio']) ?></div>
+        <div class="socio-empresa"><?= htmlspecialchars($s['empresa']) ?></div>
+        <div class="socio-pct"><?= $s['porcentaje'] ?>% de participación</div>
+        <div class="socio-gan <?= $sgPos ? 'socio-gan-g' : 'socio-gan-p' ?>"><?= m($sg) ?></div>
+      </div>
+      <?php endforeach; ?>
+    </div>
+  </div>
+  <?php endif; ?>
+
+  <!-- OBSERVACIÓN -->
+  <?php if (!empty($liq['observacion'])): ?>
+  <div class="obs-box no-break">
+    <strong>Observaciones</strong>
+    <?= nl2br(htmlspecialchars($liq['observacion'])) ?>
+  </div>
+  <?php endif; ?>
+
+  <!-- PIE DEL DOCUMENTO -->
+  <div class="doc-footer">
+    <div>
+      <div>GanaderoPro — Sistema de gestión ganadera</div>
+      <div>Documento generado el <?= $fechaImpresion ?></div>
+    </div>
+    <div style="text-align:right">
+      <div>Liquidación ID: <?= $liq['id'] ?> | Contrato: <?= htmlspecialchars($liq['contrato_codigo']) ?></div>
+      <div>Fecha de compra: <?= fdate($liq['fecha_compra']) ?> | Fecha de venta: <?= fdate($liq['fecha_venta']) ?></div>
+    </div>
+  </div>
+
+</div><!-- /page -->
+
+<script>
+// Verificar si viene con ?auto=1 para imprimir automáticamente
+if (new URLSearchParams(window.location.search).get('auto') === '1') {
+  window.addEventListener('load', () => setTimeout(() => window.print(), 400));
+}
+</script>
+</body>
+</html>
