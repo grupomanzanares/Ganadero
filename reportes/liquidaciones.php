@@ -628,33 +628,101 @@ function renderDetalleSocios(socios) {
     grid.innerHTML = '<p class="text-slate-400 text-sm col-span-2">Sin socios registrados.</p>';
     return;
   }
-  grid.innerHTML = socios.map(s => {
-    const gan   = parseFloat(s.ganancia_estimada);
-    const esGan = gan >= 0;
-    return `
-    <div class="p-4 rounded-xl border ${esGan ? 'border-esm-200 bg-esm-50' : 'border-red-200 bg-red-50'}">
-      <div class="flex items-center gap-2.5 mb-3">
-        <span class="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0
-                     ${esGan ? 'bg-esm-100 text-esm-700' : 'bg-red-100 text-red-600'}">
-          ${s.socio.charAt(0)}
-        </span>
-        <div>
-          <p class="text-sm font-semibold text-slate-800">${s.socio}</p>
-          <p class="text-xs text-slate-400">${s.empresa}</p>
-        </div>
-      </div>
-      <div class="flex items-end justify-between">
-        <div>
-          <p class="text-xs text-slate-400 mb-0.5">Participación</p>
-          <p class="text-sm font-bold text-slate-700">${s.porcentaje}%</p>
+
+  // Agrupar por contrato
+  const porContrato = {};
+  socios.forEach(s => {
+    const k = s.id_contrato;
+    if (!porContrato[k]) {
+      porContrato[k] = {
+        contrato_codigo:   s.contrato_codigo,
+        ganancia_contrato: parseFloat(s.ganancia_contrato),
+        animales_contrato: s.animales_contrato,
+        socios: [],
+      };
+    }
+    porContrato[k].socios.push(s);
+  });
+
+  const contratos = Object.values(porContrato);
+  const multiContrato = contratos.length > 1;
+
+  let html = '';
+
+  contratos.forEach(grupo => {
+    const ganCont   = grupo.ganancia_contrato;
+    const ganContPos = ganCont >= 0;
+
+    // Encabezado del contrato
+    html += `
+      <div class="col-span-2 flex items-center justify-between
+                  bg-slate-100 rounded-lg px-3 py-2 border border-slate-200">
+        <div class="flex items-center gap-2">
+          <span class="font-mono text-xs font-bold text-slate-700
+                       bg-slate-200 px-2 py-0.5 rounded">${grupo.contrato_codigo}</span>
+          <span class="text-xs text-slate-400">
+            ${grupo.animales_contrato} animal${grupo.animales_contrato != 1 ? 'es' : ''}
+            · ${grupo.socios.length} socio${grupo.socios.length != 1 ? 's' : ''}
+          </span>
         </div>
         <div class="text-right">
-          <p class="text-xs ${esGan ? 'text-esm-600' : 'text-red-500'} mb-0.5">${esGan ? 'Ganancia' : 'Pérdida'}</p>
-          <p class="font-display font-bold text-xl ${esGan ? 'text-esm-700' : 'text-red-600'}">${App.moneda(gan)}</p>
+          <span class="text-xs text-slate-400 mr-2">Ganancia del contrato</span>
+          <span class="font-bold text-sm ${ganContPos ? 'text-esm-700' : 'text-red-600'}">
+            ${App.moneda(ganCont)}
+          </span>
         </div>
-      </div>
-    </div>`;
-  }).join('');
+      </div>`;
+
+    // Socios de este contrato
+    grupo.socios.forEach(s => {
+      const gan   = parseFloat(s.ganancia_estimada);
+      const esGan = gan >= 0;
+      html += `
+      <div class="p-3 rounded-xl border ${esGan ? 'border-esm-200 bg-esm-50' : 'border-red-200 bg-red-50'}">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0
+                       ${esGan ? 'bg-esm-100 text-esm-700' : 'bg-red-100 text-red-600'}">
+            ${s.socio.charAt(0)}
+          </span>
+          <div class="min-w-0">
+            <p class="text-sm font-semibold text-slate-800 truncate">${s.socio}</p>
+            <p class="text-xs text-slate-400 truncate">${s.empresa}</p>
+          </div>
+        </div>
+        <div class="flex items-end justify-between">
+          <span class="text-xs text-slate-500">${s.porcentaje}%</span>
+          <span class="font-display font-bold text-lg ${esGan ? 'text-esm-700' : 'text-red-600'}">${App.moneda(gan)}</span>
+        </div>
+      </div>`;
+    });
+  });
+
+  // Totales consolidados si hay más de un contrato
+  if (multiContrato) {
+    const totales = {};
+    socios.forEach(s => {
+      const k = s.socio + '||' + s.empresa;
+      if (!totales[k]) totales[k] = { socio: s.socio, empresa: s.empresa, total: 0 };
+      totales[k].total += parseFloat(s.ganancia_estimada);
+    });
+
+    html += `
+      <div class="col-span-2 mt-1 bg-slate-800 rounded-xl p-3">
+        <p class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Total consolidado por socio</p>
+        <div class="flex flex-wrap gap-2">
+          ${Object.values(totales).map(t => {
+            const pos = t.total >= 0;
+            return `<div class="bg-white bg-opacity-10 rounded-lg px-3 py-2">
+              <p class="text-xs font-semibold text-white">${t.socio}</p>
+              <p class="text-xs text-slate-400">${t.empresa}</p>
+              <p class="font-bold text-base ${pos ? 'text-esm-400' : 'text-red-400'}">${App.moneda(t.total)}</p>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  }
+
+  grid.innerHTML = html;
 }
 
 // ── Tabs del panel ──────────────────────────────────────────

@@ -283,19 +283,31 @@ function getDetalleLiquidacion(int $id): void {
     $stmt3->execute([$id]);
     $liq['totales'] = $stmt3->fetch();
 
-    // Socios con ganancia proporcional a esta liquidación
-    $gananciaTotalLiq = (float)($liq['totales']['total_ganancia'] ?? 0);
+    // Socios por contrato: cada animal pertenece a su contrato con sus propios socios
+    // Se agrupa por contrato → se calcula la ganancia de los animales de ese contrato
+    // → se distribuye según el porcentaje de cada socio EN ESE contrato
     $stmt4 = $pdo->prepare(
-        'SELECT cs.porcentaje,
-                s.nombre  AS socio,
-                em.nombre AS empresa,
-                ROUND(? * cs.porcentaje / 100, 2) AS ganancia_estimada
-         FROM contrato_socios cs
-         JOIN socios   s  ON s.id  = cs.id_socio
-         JOIN empresas em ON em.id = s.id_empresa
-         WHERE cs.id_contrato = ?'
+        'SELECT
+             c.id       AS id_contrato,
+             c.codigo   AS contrato_codigo,
+             s.id       AS id_socio,
+             s.nombre   AS socio,
+             em.nombre  AS empresa,
+             cs.porcentaje,
+             ROUND(SUM(la.ganancia), 2)                             AS ganancia_contrato,
+             COUNT(la.id)                                           AS animales_contrato,
+             ROUND(SUM(la.ganancia) * cs.porcentaje / 100, 2)      AS ganancia_estimada
+         FROM liquidacion_animales la
+         JOIN animales           a  ON a.id   = la.id_animal
+         JOIN contratos_compra   c  ON c.id   = a.id_contrato
+         JOIN contrato_socios    cs ON cs.id_contrato = c.id
+         JOIN socios             s  ON s.id   = cs.id_socio
+         JOIN empresas           em ON em.id  = s.id_empresa
+         WHERE la.id_liquidacion = ?
+         GROUP BY c.id, cs.id_socio
+         ORDER BY c.codigo, s.nombre'
     );
-    $stmt4->execute([$gananciaTotalLiq, $liq['id_contrato']]);
+    $stmt4->execute([$id]);
     $liq['socios'] = $stmt4->fetchAll();
 
     Response::success($liq);

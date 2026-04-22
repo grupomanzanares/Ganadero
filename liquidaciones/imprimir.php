@@ -60,17 +60,47 @@ $stmtT = $pdo->prepare(
 $stmtT->execute([$id]);
 $tot = $stmtT->fetch(PDO::FETCH_ASSOC);
 
-// ── Socios ────────────────────────────────────────────────
+// ── Socios por contrato ───────────────────────────────────
+// Cada animal pertenece a un contrato con sus propios socios y porcentajes.
+// Se agrupa por contrato, se suma la ganancia de sus animales en esta
+// liquidación y se reparte según el porcentaje de cada socio en ese contrato.
 $stmtS = $pdo->prepare(
-    'SELECT cs.porcentaje, s.nombre AS socio, em.nombre AS empresa,
-            ROUND(? * cs.porcentaje / 100, 2) AS ganancia_estimada
-     FROM contrato_socios cs
-     JOIN socios   s  ON s.id  = cs.id_socio
-     JOIN empresas em ON em.id = s.id_empresa
-     WHERE cs.id_contrato = ?'
+    'SELECT
+         c.id       AS id_contrato,
+         c.codigo   AS contrato_codigo,
+         s.nombre   AS socio,
+         em.nombre  AS empresa,
+         cs.porcentaje,
+         COUNT(la.id)                                          AS animales_contrato,
+         ROUND(SUM(la.ganancia), 2)                           AS ganancia_contrato,
+         ROUND(SUM(la.ganancia) * cs.porcentaje / 100, 2)     AS ganancia_estimada
+     FROM liquidacion_animales la
+     JOIN animales           a  ON a.id   = la.id_animal
+     JOIN contratos_compra   c  ON c.id   = a.id_contrato
+     JOIN contrato_socios    cs ON cs.id_contrato = c.id
+     JOIN socios             s  ON s.id   = cs.id_socio
+     JOIN empresas           em ON em.id  = s.id_empresa
+     WHERE la.id_liquidacion = ?
+     GROUP BY c.id, cs.id_socio
+     ORDER BY c.codigo, s.nombre'
 );
-$stmtS->execute([(float)$tot['total_ganancia'], $liq['id_contrato']]);
-$socios = $stmtS->fetchAll(PDO::FETCH_ASSOC);
+$stmtS->execute([$id]);
+$sociosRaw = $stmtS->fetchAll(PDO::FETCH_ASSOC);
+
+// Agrupar por contrato para mostrar en secciones
+$sociosPorContrato = [];
+foreach ($sociosRaw as $row) {
+    $key = $row['id_contrato'];
+    if (!isset($sociosPorContrato[$key])) {
+        $sociosPorContrato[$key] = [
+            'contrato_codigo'  => $row['contrato_codigo'],
+            'ganancia_contrato'=> $row['ganancia_contrato'],
+            'animales_contrato'=> $row['animales_contrato'],
+            'socios'           => [],
+        ];
+    }
+    $sociosPorContrato[$key]['socios'][] = $row;
+}
 
 // ── Helpers ───────────────────────────────────────────────
 function m(mixed $n): string {
@@ -681,25 +711,105 @@ $fechaImpresion = date('d/m/Y H:i');
 
   </div>
 
-  <!-- DISTRIBUCIÓN POR SOCIOS -->
-  <?php if (!empty($socios)): ?>
+  <!-- DISTRIBUCIÓN POR SOCIOS (agrupada por contrato) -->
+  <?php if (!empty($sociosPorContrato)): ?>
   <div class="no-break">
-    <div class="seccion-titulo">Distribución por socios</div>
-    <div class="socios-grid">
-      <?php foreach ($socios as $s):
-        $sg = (float)$s['ganancia_estimada'];
-        $sgPos = $sg >= 0;
+    <div class="seccion-titulo">
+      Distribución por socios
+      <?php if (count($sociosPorContrato) > 1): ?>
+        — <?= count($sociosPorContrato) ?> contratos con socios distintos
+      <?php endif; ?>
+    </div>
+    <div style="border:1.5px solid #e2e8f0;border-top:none;border-radius:0 0 6px 6px;overflow:hidden;">
+
+      <?php foreach ($sociosPorContrato as $contId => $grupo):
+        $ganCont = (float)$grupo['ganancia_contrato'];
+        $ganContPos = $ganCont >= 0;
+        $nSocios = count($grupo['socios']);
       ?>
-      <div class="socio-card">
-        <div class="socio-inicial <?= $sgPos ? 'inicial-g' : 'inicial-p' ?>">
-          <?= mb_strtoupper(mb_substr($s['socio'], 0, 1)) ?>
+      <!-- Fila encabezado del contrato -->
+      <div style="display:flex;justify-content:space-between;align-items:center;
+                  padding:6px 12px;background:#f8fafc;
+                  border-bottom:1px solid #e2e8f0;
+                  <?= !$loop_first ?? '' ?>">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-family:monospace;font-size:10px;font-weight:800;
+                       color:#1e293b;background:#e2e8f0;padding:2px 7px;border-radius:4px">
+            <?= htmlspecialchars($grupo['contrato_codigo']) ?>
+          </span>
+          <span style="font-size:9px;color:#64748b">
+            <?= $grupo['animales_contrato'] ?> animal<?= $grupo['animales_contrato'] != 1 ? 'es' : '' ?>
+            · <?= $nSocios ?> socio<?= $nSocios != 1 ? 's' : '' ?>
+          </span>
         </div>
-        <div class="socio-nombre"><?= htmlspecialchars($s['socio']) ?></div>
-        <div class="socio-empresa"><?= htmlspecialchars($s['empresa']) ?></div>
-        <div class="socio-pct"><?= $s['porcentaje'] ?>% de participación</div>
-        <div class="socio-gan <?= $sgPos ? 'socio-gan-g' : 'socio-gan-p' ?>"><?= m($sg) ?></div>
+        <div style="text-align:right">
+          <span style="font-size:8px;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;margin-right:6px">
+            Ganancia del contrato
+          </span>
+          <span style="font-size:12px;font-weight:800;color:<?= $ganContPos ? '#059669' : '#dc2626' ?>">
+            <?= m($ganCont) ?>
+          </span>
+        </div>
       </div>
+
+      <!-- Socios de este contrato -->
+      <div class="socios-grid" style="border:none;border-radius:0;border-bottom:<?= array_key_last($sociosPorContrato) !== $contId ? '2px solid #e2e8f0' : 'none' ?>">
+        <?php foreach ($grupo['socios'] as $s):
+          $sg = (float)$s['ganancia_estimada'];
+          $sgPos = $sg >= 0;
+        ?>
+        <div class="socio-card">
+          <div class="socio-inicial <?= $sgPos ? 'inicial-g' : 'inicial-p' ?>">
+            <?= mb_strtoupper(mb_substr($s['socio'], 0, 1)) ?>
+          </div>
+          <div class="socio-nombre"><?= htmlspecialchars($s['socio']) ?></div>
+          <div class="socio-empresa"><?= htmlspecialchars($s['empresa']) ?></div>
+          <div class="socio-pct"><?= $s['porcentaje'] ?>% de participación</div>
+          <div class="socio-gan <?= $sgPos ? 'socio-gan-g' : 'socio-gan-p' ?>"><?= m($sg) ?></div>
+        </div>
+        <?php endforeach; ?>
+      </div>
+
       <?php endforeach; ?>
+
+      <?php
+      // Si hay más de un contrato, mostrar totales por socio al final
+      if (count($sociosPorContrato) > 1):
+        // Agregar ganancias por nombre de socio entre contratos
+        $totalesSocio = [];
+        foreach ($sociosPorContrato as $grupo) {
+            foreach ($grupo['socios'] as $s) {
+                $k = $s['socio'] . '||' . $s['empresa'];
+                if (!isset($totalesSocio[$k])) {
+                    $totalesSocio[$k] = ['socio' => $s['socio'], 'empresa' => $s['empresa'], 'total' => 0];
+                }
+                $totalesSocio[$k]['total'] += (float)$s['ganancia_estimada'];
+            }
+        }
+      ?>
+      <!-- Total consolidado por socio -->
+      <div style="background:#1e293b;padding:8px 12px;">
+        <div style="font-size:8px;font-weight:700;text-transform:uppercase;
+                    letter-spacing:.1em;color:#94a3b8;margin-bottom:6px">
+          Total consolidado por socio
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <?php foreach ($totalesSocio as $ts):
+            $tsPos = $ts['total'] >= 0;
+          ?>
+          <div style="background:rgba(255,255,255,.08);border-radius:6px;
+                      padding:6px 12px;min-width:130px">
+            <div style="font-size:9px;font-weight:700;color:#e2e8f0"><?= htmlspecialchars($ts['socio']) ?></div>
+            <div style="font-size:8px;color:#64748b;margin-bottom:3px"><?= htmlspecialchars($ts['empresa']) ?></div>
+            <div style="font-size:14px;font-weight:900;color:<?= $tsPos ? '#6ee7b7' : '#fca5a5' ?>">
+              <?= m($ts['total']) ?>
+            </div>
+          </div>
+          <?php endforeach; ?>
+        </div>
+      </div>
+      <?php endif; ?>
+
     </div>
   </div>
   <?php endif; ?>
