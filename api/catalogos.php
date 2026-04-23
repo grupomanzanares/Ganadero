@@ -59,15 +59,38 @@ function handleSocios(string $method, int $id): void {
     $pdo = getDB();
     if ($method === 'GET') {
         $idEmpresa = (int)input('empresa', 0, 'GET');
+        $todos     = (bool)input('todos',  0, 'GET'); // 1 = incluir inactivos
+
         if ($id > 0) {
-            $stmt = $pdo->prepare('SELECT s.*, e.nombre AS empresa FROM socios s JOIN empresas e ON e.id = s.id_empresa WHERE s.id = ?');
+            $stmt = $pdo->prepare(
+                'SELECT s.*, e.nombre AS empresa, u.nombre AS usuario_nombre
+                 FROM socios s
+                 JOIN empresas e  ON e.id = s.id_empresa
+                 LEFT JOIN usuarios u ON u.id = s.id_usuario
+                 WHERE s.id = ?'
+            );
             $stmt->execute([$id]);
             $r = $stmt->fetch();
             $r ? Response::success($r) : Response::notFound();
         }
-        $where  = $idEmpresa > 0 ? 'WHERE s.id_empresa = ?' : 'WHERE 1=1';
-        $params = $idEmpresa > 0 ? [$idEmpresa] : [];
-        $stmt   = $pdo->prepare("SELECT s.id, s.nombre, s.cedula, s.telefono, s.activo, e.nombre AS empresa FROM socios s JOIN empresas e ON e.id = s.id_empresa {$where} AND s.activo=1 ORDER BY s.nombre");
+
+        $where  = ['1=1'];
+        $params = [];
+        if ($idEmpresa > 0) { $where[] = 's.id_empresa = ?'; $params[] = $idEmpresa; }
+        if (!$todos)         { $where[] = 's.activo = 1'; }
+        $w = implode(' AND ', $where);
+
+        $stmt = $pdo->prepare(
+            "SELECT s.id, s.id_empresa, s.id_usuario,
+                    s.nombre, s.cedula, s.telefono, s.email, s.activo,
+                    e.nombre AS empresa,
+                    u.nombre AS usuario_nombre
+             FROM socios s
+             JOIN empresas e  ON e.id = s.id_empresa
+             LEFT JOIN usuarios u ON u.id = s.id_usuario
+             WHERE {$w}
+             ORDER BY s.nombre"
+        );
         $stmt->execute($params);
         Response::success($stmt->fetchAll());
     }
@@ -75,15 +98,34 @@ function handleSocios(string $method, int $id): void {
         Auth::requirePermission('socios', 'crear');
         $d = jsonInput();
         if (empty($d['nombre']) || empty($d['id_empresa'])) Response::error('Nombre y empresa son obligatorios.');
-        $stmt = $pdo->prepare('INSERT INTO socios (id_empresa, nombre, cedula, telefono, email) VALUES (?,?,?,?,?)');
-        $stmt->execute([$d['id_empresa'], $d['nombre'], $d['cedula'] ?? null, $d['telefono'] ?? null, $d['email'] ?? null]);
+        $stmt = $pdo->prepare(
+            'INSERT INTO socios (id_empresa, id_usuario, nombre, cedula, telefono, email) VALUES (?,?,?,?,?,?)'
+        );
+        $stmt->execute([
+            (int)$d['id_empresa'],
+            !empty($d['id_usuario']) ? (int)$d['id_usuario'] : null,
+            $d['nombre'],
+            $d['cedula']   ?? null,
+            $d['telefono'] ?? null,
+            $d['email']    ?? null,
+        ]);
         Response::success(['id' => $pdo->lastInsertId()], 'Socio creado.');
     }
     if ($method === 'PUT') {
         Auth::requirePermission('socios', 'editar');
         $d = jsonInput();
-        $pdo->prepare('UPDATE socios SET nombre=?, cedula=?, telefono=?, email=?, activo=? WHERE id=?')
-            ->execute([$d['nombre'], $d['cedula'] ?? null, $d['telefono'] ?? null, $d['email'] ?? null, $d['activo'] ?? 1, $id]);
+        $pdo->prepare(
+            'UPDATE socios SET id_empresa=?, id_usuario=?, nombre=?, cedula=?, telefono=?, email=?, activo=? WHERE id=?'
+        )->execute([
+            (int)$d['id_empresa'],
+            !empty($d['id_usuario']) ? (int)$d['id_usuario'] : null,
+            $d['nombre'],
+            $d['cedula']   ?? null,
+            $d['telefono'] ?? null,
+            $d['email']    ?? null,
+            (int)($d['activo'] ?? 1),
+            $id,
+        ]);
         Response::success(null, 'Socio actualizado.');
     }
 }
