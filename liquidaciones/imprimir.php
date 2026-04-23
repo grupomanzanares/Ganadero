@@ -309,9 +309,10 @@ $fechaImpresion = date('d/m/Y H:i');
     .tabla-animales tbody tr:last-child { border-bottom: none; }
     .tabla-animales tbody tr.muerte { background: #fff8f8; }
     .tabla-animales tbody td {
-      padding: 4px 6px;
+      padding: 4px 4px;
       text-align: right;
       color: #334155;
+      white-space: nowrap;
     }
     .tabla-animales tbody td:first-child { text-align: left; }
     .tabla-animales tfoot tr {
@@ -319,10 +320,11 @@ $fechaImpresion = date('d/m/Y H:i');
       color: #e2e8f0;
     }
     .tabla-animales tfoot td {
-      padding: 5px 6px;
+      padding: 5px 4px;
       text-align: right;
       font-weight: 700;
-      font-size: 9.5px;
+      font-size: 8.5px;
+      white-space: nowrap;
     }
     .tabla-animales tfoot td:first-child { text-align: left; }
     .badge-muerte {
