@@ -11,20 +11,6 @@ $modulo     = 'cierres';
 require_once __DIR__ . '/../views/layout/header.php';
 ?>
 
-<!-- ── Encabezado solo impresión ──────────────────────────── -->
-<div class="print-header" style="display:none">
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #523b12;padding-bottom:12pt;margin-bottom:16pt">
-    <div>
-      <h1 style="font-family:Georgia,serif;font-size:18pt;font-weight:700;color:#3a2a0c;margin:0">INFORME EJECUTIVO</h1>
-      <p style="font-size:11pt;color:#523b12;font-weight:600;margin:2pt 0 0">Cierres de Contrato</p>
-    </div>
-    <div style="text-align:right;font-size:9pt;color:#8b6320">
-      <p id="ph-fecha-gen" style="margin:0"></p>
-      <p id="ph-filtros" style="margin:2pt 0 0;font-style:italic"></p>
-    </div>
-  </div>
-</div>
-
 <!-- ── Título ─────────────────────────────────────────────── -->
 <div class="flex items-center justify-between mb-5 no-print">
   <div>
@@ -84,6 +70,8 @@ require_once __DIR__ . '/../views/layout/header.php';
   <div class="flex justify-end gap-2 no-print">
     <button onclick="imprimirLista()" class="btn btn-outline btn-sm">🖨️ Imprimir informe</button>
   </div>
+  <!-- Enlace oculto para abrir página de impresión -->
+  <a id="link-imprimir-lista" href="#" target="_blank" style="display:none"></a>
 </div>
 
 <!-- ── Tabla de cierres ───────────────────────────────────── -->
@@ -145,18 +133,6 @@ require_once __DIR__ . '/../views/layout/header.php';
   <div class="flex justify-between items-center no-print">
     <button onclick="volverLista()" class="btn btn-outline btn-sm">← Volver al listado</button>
     <button onclick="imprimirDetalle()" class="btn btn-outline">🖨️ Imprimir cierre</button>
-  </div>
-
-  <!-- Área de firma (solo print) -->
-  <div class="print-firmas" style="display:none;margin-top:48pt;padding-top:16pt;border-top:1px solid #ccc">
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:64pt">
-      <div style="text-align:center">
-        <div style="border-top:1px solid #333;padding-top:6pt;font-size:9pt;color:#555">Gerencia / Administrador</div>
-      </div>
-      <div style="text-align:center">
-        <div style="border-top:1px solid #333;padding-top:6pt;font-size:9pt;color:#555">Revisado por</div>
-      </div>
-    </div>
   </div>
 
 </div>
@@ -486,128 +462,30 @@ function volverLista() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Impresión
+// Impresión — abre página dedicada en nueva pestaña
 // ─────────────────────────────────────────────────────────────
-function prepararPrintHeader(modo) {
-  const hoy = new Date().toLocaleDateString('es-CO', { year:'numeric', month:'long', day:'numeric' });
-  document.getElementById('ph-fecha-gen').textContent = 'Generado: ' + hoy;
-
-  if (modo === 'lista' && _listaData) {
-    const filtros = [];
-    const desde   = document.getElementById('f-desde').value;
-    const hasta   = document.getElementById('f-hasta').value;
-    const empresa = document.getElementById('f-empresa');
-    const tipo    = document.getElementById('f-tipo');
-    const socio   = document.getElementById('f-socio');
-    const res     = document.getElementById('f-resultado').value;
-    if (desde)       filtros.push('Desde: ' + App.fecha(desde));
-    if (hasta)       filtros.push('Hasta: ' + App.fecha(hasta));
-    if (empresa.value) filtros.push('Empresa: ' + empresa.options[empresa.selectedIndex].text);
-    if (tipo.value)    filtros.push('Tipo: '    + tipo.options[tipo.selectedIndex].text);
-    if (socio.value)   filtros.push('Socio: '   + socio.options[socio.selectedIndex].text);
-    if (res)           filtros.push('Resultado: ' + (res === 'positivo' ? 'Solo ganancias' : 'Solo pérdidas'));
-    document.getElementById('ph-filtros').textContent =
-      filtros.length ? 'Filtros: ' + filtros.join(' · ') : 'Sin filtros aplicados — todos los cierres';
-  } else if (modo === 'detalle' && _detalleData) {
-    document.getElementById('ph-filtros').textContent =
-      `Contrato: ${_detalleData.codigo} · ${_detalleData.empresa_compra}`;
-  }
-}
-
 function imprimirLista() {
-  prepararPrintHeader('lista');
-  document.body.classList.add('print-modo-lista');
-  window.print();
-  document.body.classList.remove('print-modo-lista');
+  const params = new URLSearchParams({
+    fecha_desde: document.getElementById('f-desde').value,
+    fecha_hasta: document.getElementById('f-hasta').value,
+    empresa:     document.getElementById('f-empresa').value,
+    tipo_animal: document.getElementById('f-tipo').value,
+    socio:       document.getElementById('f-socio').value,
+    resultado:   document.getElementById('f-resultado').value,
+  });
+  window.open(APP_URL + '/reportes/imprimir_lista_cierres.php?' + params.toString(), '_blank');
 }
 
 function imprimirDetalle() {
-  prepararPrintHeader('detalle');
-  document.body.classList.add('print-modo-detalle');
-  window.print();
-  document.body.classList.remove('print-modo-detalle');
+  if (!_detalleData) return;
+  window.open(APP_URL + '/reportes/imprimir_cierre.php?id=' + _detalleData.id_contrato, '_blank');
 }
 </script>
 
 <style>
-/* ── Print ─────────────────────────────────────────────────── */
 @media print {
-  /* Base: ocultar navegación y UI */
-  aside, .top-header, .no-print,
-  #filtros-card, #btns-acciones { display: none !important; }
-  .layout-main { margin-left: 0 !important; }
-  body { background: white; font-size: 10pt; color: #1a1a1a; }
-
-  /* Mostrar cabecera de informe */
-  .print-header { display: block !important; }
-
-  /* Ocultar todo por defecto en print */
-  #kpi-section, #tabla-section, #panel-detalle,
-  .print-firmas { display: none !important; }
-
-  /* ── Modo lista ── */
-  body.print-modo-lista #kpi-section,
-  body.print-modo-lista #tabla-section { display: block !important; }
-
-  body.print-modo-lista #kpi-cards {
-    display: grid !important;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 8pt;
-    margin-bottom: 12pt;
-  }
-
-  body.print-modo-lista .stat-card {
-    border: 1px solid #d4a843;
-    border-radius: 4pt;
-    padding: 8pt;
-    text-align: center;
-  }
-
-  /* ── Modo detalle ── */
-  body.print-modo-detalle #panel-detalle { display: block !important; }
-  body.print-modo-detalle .print-firmas  { display: block !important; }
-
-  /* Tablas con bordes para impresión */
-  .print-tabla thead th,
-  .print-tabla tbody td,
-  .print-tabla tfoot td {
-    border: 0.5pt solid #b88930;
-    padding: 4pt 6pt;
-    font-size: 8.5pt;
-  }
-  .print-tabla thead tr { background: #3a2a0c !important; color: #f5e6c8 !important; }
-  .print-tfoot tr { background: #3a2a0c !important; color: #f5e6c8 !important; }
-
-  /* Cards en print */
-  .card {
-    border: 0.5pt solid #d4a843;
-    box-shadow: none;
-    page-break-inside: avoid;
-  }
-
-  /* Grid 2 cols en print para costos/liquidaciones */
-  .grid.grid-cols-1.md\\:grid-cols-2 {
-    display: grid !important;
-    grid-template-columns: 1fr 1fr;
-    gap: 10pt;
-  }
-
-  /* Socios grid */
-  #det-socios {
-    display: grid !important;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8pt;
-  }
-
-  #det-socios > div {
-    border: 0.5pt solid #b88930;
-    border-radius: 4pt;
-    page-break-inside: avoid;
-  }
-
-  /* Evitar cortes de página en secciones clave */
-  #det-header { page-break-after: avoid; }
-  .space-y-5 > * { page-break-inside: avoid; }
+  /* La impresión se maneja en páginas dedicadas (imprimir_cierre.php / imprimir_lista_cierres.php) */
+  body { display: none; }
 }
 </style>
 
