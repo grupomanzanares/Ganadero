@@ -649,7 +649,7 @@ $fechaImpresion = date('d/m/Y H:i');
   <table class="tabla-animales">
     <thead>
       <tr>
-        <th style="text-align:left;width:80px">Código</th>
+        <th style="text-align:left;width:52px">Código</th>
         <th style="width:46px">Tipo</th>
         <th>Días<br>mant.</th>
         <th>Costo<br>compra</th>

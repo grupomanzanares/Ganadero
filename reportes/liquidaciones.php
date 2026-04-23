@@ -373,6 +373,10 @@ let datosActuales = [];
   document.getElementById('f-hasta').value = hoy.toISOString().slice(0,10);
 
   await cargarReporte();
+
+  // Auto-abrir detalle si viene ?open=ID desde otra página
+  const autoOpen = new URLSearchParams(window.location.search).get('open');
+  if (autoOpen) verDetalle(parseInt(autoOpen, 10));
 })();
 
 // ── Cargar reporte ──────────────────────────────────────────

@@ -20,6 +20,7 @@ match ($action) {
     'contratos'    => getContratosSocio($idSocio, $desde, $hasta, $estado),
     'animales'     => getAnimalesSocio($idSocio),
     'ganancias'    => getGananciaSocio($idSocio, $desde, $hasta),
+    'inventario'   => getInventarioSocio($idSocio),
     default        => Response::error("Acción '{$action}' no válida.", 404),
 };
 
@@ -124,7 +125,7 @@ function getResumenSocio(int $id, string $desde, string $hasta, string $estado):
     );
     $r3->execute($p); $fin = $r3->fetch();
 
-    // Inversión activa
+    // Inversión activa (valor nominal contratos abiertos)
     $filtAb = ['cs.id_socio=?', "cc.estado='abierto'"];
     $pAb    = [$id];
     if ($desde) { $filtAb[] = 'cc.fecha_compra >= ?'; $pAb[] = $desde; }
@@ -137,14 +138,38 @@ function getResumenSocio(int $id, string $desde, string $hasta, string $estado):
     $r4->execute($pAb);
     $inversion = (float)$r4->fetchColumn();
 
+    // Financiero parcial — contratos ABIERTOS con liquidaciones realizadas
+    $filtAb2 = ['cs.id_socio=?', "cc.estado='abierto'"];
+    $pAb2    = [$id];
+    if ($desde) { $filtAb2[] = 'cc.fecha_compra >= ?'; $pAb2[] = $desde; }
+    if ($hasta) { $filtAb2[] = 'cc.fecha_compra <= ?'; $pAb2[] = $hasta; }
+    $r5 = $pdo->prepare(
+        'SELECT
+            COALESCE(SUM(la.costo_total * (cs.porcentaje/100)), 0) AS costos_parciales,
+            COALESCE(SUM(la.valor_venta * (cs.porcentaje/100)), 0) AS ingresos_parciales,
+            COALESCE(SUM(la.ganancia    * (cs.porcentaje/100)), 0) AS ganancia_parcial
+         FROM contrato_socios cs
+         JOIN contratos_compra cc ON cc.id = cs.id_contrato
+         JOIN animales a ON a.id_contrato = cc.id
+         JOIN liquidacion_animales la ON la.id_animal = a.id
+         WHERE ' . implode(' AND ', $filtAb2)
+    );
+    $r5->execute($pAb2);
+    $parcial = $r5->fetch();
+
     Response::success([
-        'socio'           => $socio,
-        'contratos'       => $contratos,
-        'animales'        => $animales,
-        'ganancia_total'  => (float)$fin['ganancia_total'],
-        'costo_total'     => (float)$fin['costo_total'],
-        'ingresos_ventas' => (float)$fin['ingresos_ventas'],
-        'inversion_activa'=> $inversion,
+        'socio'              => $socio,
+        'contratos'          => $contratos,
+        'animales'           => $animales,
+        // Datos de contratos CERRADOS (cierre oficial)
+        'ganancia_total'     => (float)$fin['ganancia_total'],
+        'costo_total'        => (float)$fin['costo_total'],
+        'ingresos_ventas'    => (float)$fin['ingresos_ventas'],
+        'inversion_activa'   => $inversion,
+        // Datos de contratos ABIERTOS con liquidaciones parciales
+        'costos_parciales'   => (float)$parcial['costos_parciales'],
+        'ingresos_parciales' => (float)$parcial['ingresos_parciales'],
+        'ganancia_parcial'   => (float)$parcial['ganancia_parcial'],
     ]);
 }
 
@@ -265,5 +290,54 @@ function getGananciaSocio(int $id, string $desde, string $hasta): void {
          ORDER BY ci.fecha_cierre DESC"
     );
     $stmt->execute($params);
+    Response::success($stmt->fetchAll());
+}
+
+// ─────────────────────────────────────────────────────────────
+// Inventario completo — todos los animales de todos los contratos
+// ─────────────────────────────────────────────────────────────
+function getInventarioSocio(int $id): void {
+    if ($id <= 0) Response::error('ID de socio requerido.');
+    verificarAccesoSocio($id);
+    $pdo = getDB();
+
+    $stmt = $pdo->prepare(
+        "SELECT
+            cc.id            AS id_contrato,
+            cc.codigo        AS contrato_codigo,
+            cc.fecha_compra,
+            cc.estado        AS contrato_estado,
+            cc.valor_unitario_kg,
+            cs.porcentaje,
+            t.nombre         AS tipo_animal,
+            e.nombre         AS empresa,
+            a.id             AS id_animal,
+            a.codigo         AS animal_codigo,
+            a.peso_inicial_kg,
+            a.peso_finca_kg,
+            a.costo_compra_animal,
+            a.costo_flete_animal,
+            a.valor_promedio_kg,
+            a.estado         AS animal_estado,
+            la.dias_manutencion,
+            la.costo_manutencion,
+            la.costo_flete_salida,
+            la.otros_gastos,
+            la.costo_total   AS costo_total_liquidado,
+            la.valor_venta,
+            la.ganancia,
+            la.peso_salida_kg,
+            la.fecha_salida,
+            la.tipo_salida
+         FROM contrato_socios cs
+         JOIN contratos_compra cc ON cc.id = cs.id_contrato
+         JOIN tipos_animal t      ON t.id  = cc.id_tipo_animal
+         JOIN empresas e          ON e.id  = cc.id_empresa_compra
+         JOIN animales a          ON a.id_contrato = cc.id
+         LEFT JOIN liquidacion_animales la ON la.id_animal = a.id
+         WHERE cs.id_socio = ?
+         ORDER BY cc.fecha_compra DESC, cc.id, a.id"
+    );
+    $stmt->execute([$id]);
     Response::success($stmt->fetchAll());
 }

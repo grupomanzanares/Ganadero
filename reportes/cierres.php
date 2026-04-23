@@ -138,12 +138,22 @@ async function cargarCierre() {
     </div>`;
 
   // Costos
-  document.getElementById('resumen-costos').innerHTML = [
-    ['Costo compra',       d.costo_total_compra],
-    ['Flete entrada',      d.costo_total_flete_entrada],
-    ['Manutención',        d.costo_total_manutencion],
-    ['Flete salida',       d.costo_total_flete_salida],
-  ].map(([l,v]) => `
+  const otrosCostos = parseFloat(d.costo_total || 0)
+    - parseFloat(d.costo_total_compra || 0)
+    - parseFloat(d.costo_total_flete_entrada || 0)
+    - parseFloat(d.costo_total_manutencion || 0)
+    - parseFloat(d.costo_total_flete_salida || 0);
+
+  const filasCostos = [
+    ['Costo compra',  d.costo_total_compra],
+    ['Flete entrada', d.costo_total_flete_entrada],
+    ['Manutención',   d.costo_total_manutencion],
+    ['Flete salida',  d.costo_total_flete_salida],
+  ];
+  if (Math.abs(otrosCostos) >= 1) filasCostos.push(['Otros gastos', otrosCostos]);
+
+  document.getElementById('resumen-costos').innerHTML =
+    filasCostos.map(([l,v]) => `
     <div class="flex justify-between py-1.5 border-b border-tierra-100">
       <span class="text-tierra-500">${l}</span>
       <span class="font-medium text-tierra-800">${App.moneda(v)}</span>

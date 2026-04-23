@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // ============================================================
 // reportes/socios.php — Reporte profesional por socio
 // ============================================================
@@ -89,7 +89,8 @@ require_once __DIR__ . '/../views/layout/header.php';
     </svg>
     Imprimir
   </button>
-  <button onclick="exportarCSV()" class="btn btn-outline">↓ CSV</button>
+  <button onclick="exportarCSVContratos()" class="btn btn-outline">↓ CSV contratos</button>
+  <button onclick="exportarCSVAnimales()" class="btn btn-outline">↓ CSV animales activos</button>
 </div>
 
 <!-- ══ LOADER ═══════════════════════════════════════════════ -->
@@ -310,7 +311,7 @@ async function generar() {
 function renderHead() {
   const d   = DATOS.resumen;
   const s   = d.socio;
-  const gan = parseFloat(d.ganancia_total)||0;
+  const gan = (parseFloat(d.ganancia_total)||0) + (parseFloat(d.ganancia_parcial)||0);
   const desde = document.getElementById('f-desde').value;
   const hasta  = document.getElementById('f-hasta').value;
 
@@ -370,18 +371,29 @@ function renderKpis() {
       ${total>0&&k.lbl!=='Contratos'?`<div class="prog"><div class="prog-f" style="width:${Math.min(100,(k.val/total)*100).toFixed(1)}%"></div></div>`:''}
     </div>`).join('');
 
-  const gan   = parseFloat(d.ganancia_total)||0;
-  const costo = parseFloat(d.costo_total)||0;
-  const venta = parseFloat(d.ingresos_ventas)||0;
+  // Combinar cerrados (oficiales) + abiertos parciales
+  const ganCerrado  = parseFloat(d.ganancia_total)||0;
+  const costoCerrado= parseFloat(d.costo_total)||0;
+  const ventaCerrado= parseFloat(d.ingresos_ventas)||0;
+  const ganParcial  = parseFloat(d.ganancia_parcial)||0;
+  const costoParcial= parseFloat(d.costos_parciales)||0;
+  const ventaParcial= parseFloat(d.ingresos_parciales)||0;
+
+  const gan   = ganCerrado + ganParcial;
+  const costo = costoCerrado + costoParcial;
+  const venta = ventaCerrado + ventaParcial;
   const inver = parseFloat(d.inversion_activa)||0;
   const rent  = costo>0?((gan/costo)*100).toFixed(1)+'%':'—';
   const margen= venta>0?((gan/venta)*100).toFixed(1)+'%':'—';
 
   const kpis_fin = [
-    { lbl:'Inversión activa', val:App.moneda(inver), ac:C.azul,  sub:'contratos abiertos' },
-    { lbl:'Ingresos ventas',  val:App.moneda(venta), ac:C.morado, sub:'contratos cerrados' },
-    { lbl:'Costos totales',   val:App.moneda(costo), ac:C.amber,  sub:'compra+manten+fletes' },
-    { lbl: gan>=0?'Ganancia neta':'Pérdida neta',
+    { lbl:'Inversión activa', val:App.moneda(inver), ac:C.azul,
+      sub:'valor nominal contratos abiertos' },
+    { lbl:'Ingresos ventas',  val:App.moneda(venta), ac:C.morado,
+      sub:`${App.moneda(ventaCerrado)} cerrados · ${App.moneda(ventaParcial)} parciales` },
+    { lbl:'Costos totales',   val:App.moneda(costo), ac:C.amber,
+      sub:`${App.moneda(costoCerrado)} cerrados · ${App.moneda(costoParcial)} parciales` },
+    { lbl: gan>=0?'Resultado consolidado':'Pérdida consolidada',
       val: App.moneda(Math.abs(gan)), ac: gan>=0?C.verde:C.rojo,
       sub:`Rentab. ${rent} · Margen ${margen}` },
   ];
@@ -765,19 +777,50 @@ function ch6_compraVenta() {
 // ════════════════════════════════════════════════════
 // EXPORTAR CSV
 // ════════════════════════════════════════════════════
-function exportarCSV() {
+function csvDescarga(filas, nombre) {
+  const csv = '﻿' + filas.join('\n');
+  const el  = document.createElement('a');
+  el.href   = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8;'}));
+  el.download = nombre + '_' + new Date().toISOString().slice(0,10) + '.csv';
+  el.click();
+}
+
+function exportarCSVContratos() {
   const c = DATOS.contratos||[];
   if (!c.length) { App.toast('Sin datos.','warning'); return; }
-  const cab = ['Contrato','Tipo','Fecha','Part%','Anim','Activos','Vendidos','Muertos','Inversión','Ingresos','Ganancia','Estado'];
-  const fil = c.map(x=>{
+  const cab = ['Contrato','Tipo','Fecha','Part%','Animales','Activos','Vendidos','Muertos','Inversión','Ingresos','Costos','Ganancia','Estado'];
+  const fil = c.map(x => {
     const gan = parseFloat(x.ganancia_socio||0)||(parseFloat(x.ventas_acumuladas_socio||0)-parseFloat(x.costos_acumulados_socio||0));
-    return [x.codigo,x.tipo_animal,x.fecha_compra,x.porcentaje,x.animales_socio,x.activos_socio,x.vendidos_socio,x.muertos_socio,x.inversion_socio,parseFloat(x.ventas_acumuladas_socio||0).toFixed(2),gan.toFixed(2),x.estado].join(',');
+    const ing = parseFloat(x.ventas_acumuladas_socio||0)||parseFloat(x.ingresos_socio||0);
+    const cos = parseFloat(x.costos_acumulados_socio||0)||parseFloat(x.costo_total_socio||0);
+    return [x.codigo,x.tipo_animal,x.fecha_compra,x.porcentaje,
+            x.animales_socio,x.activos_socio,x.vendidos_socio,x.muertos_socio,
+            parseFloat(x.inversion_socio||0).toFixed(0),
+            ing.toFixed(0), cos.toFixed(0), gan.toFixed(0), x.estado]
+           .map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',');
   });
-  const csv  = '\ufeff'+[cab.join(','),...fil].join('\n');
-  const a    = document.createElement('a');
-  a.href     = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
-  a.download = `reporte_${document.getElementById('f-socio').value}_${new Date().toISOString().slice(0,10)}.csv`;
-  a.click();
+  csvDescarga([cab.map(v=>`"${v}"`).join(','), ...fil],
+    `contratos_socio_${document.getElementById('f-socio').value}`);
+}
+
+function exportarCSVAnimales() {
+  const a = DATOS.animales||[];
+  if (!a.length) { App.toast('Sin animales activos.','warning'); return; }
+  const hoy = Date.now();
+  const cab = ['Código','Contrato','Tipo','Empresa','Peso finca kg','Costo compra',
+               '$/kg ingreso','Fecha compra','Días campo','Manutención est.'];
+  const fil = a.map(x => {
+    const dias = Math.max(0, Math.round((hoy - new Date(x.fecha_compra).getTime()) / 86400000));
+    const mant = Math.round((dias/(365/12))*11518);
+    return [x.codigo||'', x.contrato_codigo, x.tipo_animal, x.empresa,
+            parseFloat(x.peso_finca_kg||0).toFixed(2),
+            parseFloat(x.costo_compra_animal||0).toFixed(0),
+            x.valor_promedio_kg ? parseFloat(x.valor_promedio_kg).toFixed(0) : '',
+            x.fecha_compra, dias, mant]
+           .map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',');
+  });
+  csvDescarga([cab.map(v=>`"${v}"`).join(','), ...fil],
+    `animales_activos_socio_${document.getElementById('f-socio').value}`);
 }
 </script>
 

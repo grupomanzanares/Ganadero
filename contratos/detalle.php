@@ -112,6 +112,7 @@ require_once __DIR__ . '/../views/layout/header.php';
 <script>
 const ID           = <?= $id ?>;
 const CAN_ELIMINAR = <?= Auth::can('contratos','eliminar') ? 'true' : 'false' ?>;
+const CAN_EDITAR   = <?= Auth::can('contratos','editar')   ? 'true' : 'false' ?>;
 let contratoData   = null;
 
 function showTab(tab) {
@@ -155,12 +156,21 @@ function showTab(tab) {
         </div>
         <p class="text-tierra-500 text-sm">${c.tipo_animal} — Proveedor: <strong>${c.proveedor}</strong></p>
       </div>
-      <div class="flex gap-3">
+      <div class="flex gap-3 flex-wrap">
         ${c.estado === 'abierto'
           ? `<a href="${APP_URL}/liquidaciones/nuevo.php?contrato=${ID}"
                 class="btn btn-verde btn-sm">Liquidar animales</a>`
           : `<a href="${APP_URL}/reportes/cierres.php?contrato=${ID}"
                 class="btn btn-tierra btn-sm">Ver cierre</a>`}
+        ${(() => {
+            const sinActivos = c.animales.every(a => a.estado !== 'activo');
+            return CAN_EDITAR && c.estado === 'abierto' && sinActivos
+              ? `<button onclick="cerrarContrato()"
+                         class="btn btn-sm bg-amber-100 text-amber-800 hover:bg-amber-200 border border-amber-300">
+                   Cerrar contrato
+                 </button>`
+              : '';
+          })()}
         ${CAN_ELIMINAR && c.estado !== 'anulado'
           ? `<button onclick="eliminarContrato()"
                      class="btn btn-sm bg-red-100 text-red-700 hover:bg-red-200 border border-red-200">
@@ -239,7 +249,7 @@ function showTab(tab) {
       }},
       { render: r => `
         <div class="flex gap-1">
-          <a href="${APP_URL}/liquidaciones/detalle.php?id=${r.id}"
+          <a href="${APP_URL}/reportes/liquidaciones.php?open=${r.id}"
              class="btn btn-tierra btn-xs">Ver</a>
           <a href="${APP_URL}/liquidaciones/imprimir.php?id=${r.id}" target="_blank"
              class="btn btn-xs btn-outline" title="Imprimir">
@@ -252,6 +262,17 @@ function showTab(tab) {
     ]);
   }
 })();
+
+async function cerrarContrato() {
+  if (!App.confirm('¿Cerrar este contrato? Se generará el cierre con todos los animales ya liquidados. Esta acción no se puede deshacer.')) return;
+  const res = await App.post(APP_URL + `/api/contratos.php?action=cerrar&id=${ID}`, {});
+  if (res.ok) {
+    App.toast(res.data.message || 'Contrato cerrado correctamente.', 'success');
+    setTimeout(() => window.location.reload(), 1200);
+  } else {
+    App.toast(res.data.message || 'No se pudo cerrar el contrato.', 'error');
+  }
+}
 
 async function eliminarContrato() {
   if (!App.confirm('¿Está seguro de que desea eliminar este contrato? Esta acción no se puede deshacer.')) return;

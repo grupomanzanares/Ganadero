@@ -13,7 +13,7 @@ $id     = (int)input('id', 0, 'GET');
 
 match ($method) {
     'GET'    => handleGet($action, $id),
-    'POST'   => handlePost(),
+    'POST'   => $action === 'cerrar' ? handleCerrar($id) : handlePost(),
     'PUT'    => handlePut($id),
     'DELETE' => handleDelete($id),
     default  => Response::error('Método no permitido.', 405),
@@ -227,6 +227,109 @@ function handlePut(int $id): void {
 
     Logger::log('editar', 'contratos_compra', $id);
     Response::success(null, 'Contrato actualizado.');
+}
+
+// ── CERRAR MANUAL ────────────────────────────────────────────
+function handleCerrar(int $id): void {
+    Auth::requirePermission('contratos', 'editar');
+    if ($id <= 0) Response::error('ID inválido.');
+    $pdo = getDB();
+
+    // Verificar que el contrato existe y está abierto
+    $stmt = $pdo->prepare('SELECT estado FROM contratos_compra WHERE id = ?');
+    $stmt->execute([$id]);
+    $contrato = $stmt->fetch();
+    if (!$contrato) Response::notFound('Contrato no encontrado.');
+    if ($contrato['estado'] !== 'abierto') Response::error('El contrato ya está cerrado o anulado.');
+
+    // Verificar que no queden animales activos
+    $stmtAct = $pdo->prepare("SELECT COUNT(*) FROM animales WHERE id_contrato = ? AND estado = 'activo'");
+    $stmtAct->execute([$id]);
+    if ((int)$stmtAct->fetchColumn() > 0) {
+        Response::error('El contrato aún tiene animales activos. Liquide todos los animales antes de cerrar.');
+    }
+
+    // Verificar que no exista ya un cierre
+    $stmtCi = $pdo->prepare('SELECT id FROM cierre_contrato WHERE id_contrato = ?');
+    $stmtCi->execute([$id]);
+    if ($stmtCi->fetch()) Response::error('Este contrato ya tiene un cierre registrado.');
+
+    // Determinar fecha de cierre: la última fecha de liquidación de sus animales
+    $stmtFecha = $pdo->prepare(
+        'SELECT MAX(la.fecha_salida)
+         FROM liquidacion_animales la
+         JOIN animales a ON a.id = la.id_animal
+         WHERE a.id_contrato = ?'
+    );
+    $stmtFecha->execute([$id]);
+    $fechaCierre = $stmtFecha->fetchColumn() ?: date('Y-m-d');
+
+    $pdo->beginTransaction();
+    try {
+        generarCierreContrato($id, $pdo, $fechaCierre);
+        $pdo->prepare("UPDATE contratos_compra SET estado='cerrado' WHERE id=?")->execute([$id]);
+        $pdo->commit();
+        Logger::log('cerrar', 'contratos_compra', $id);
+        Response::success(null, 'Contrato cerrado correctamente.');
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        error_log($e->getMessage());
+        Response::serverError('No se pudo cerrar el contrato: ' . $e->getMessage());
+    }
+}
+
+function generarCierreContrato(int $idContrato, PDO $pdo, string $fechaCierre): void {
+    $stmt = $pdo->prepare(
+        'SELECT
+            COUNT(*)                  AS total,
+            SUM(CASE WHEN tipo_salida="venta"  THEN 1 ELSE 0 END) AS vendidos,
+            SUM(CASE WHEN tipo_salida="muerte" THEN 1 ELSE 0 END) AS muertos,
+            SUM(costo_compra)         AS tot_compra,
+            SUM(costo_flete_entrada)  AS tot_flete_ent,
+            SUM(costo_manutencion)    AS tot_manutencion,
+            SUM(costo_flete_salida)   AS tot_flete_sal,
+            SUM(costo_total)          AS tot_costos,
+            SUM(valor_venta)          AS tot_ventas,
+            SUM(ganancia)             AS tot_ganancia
+         FROM liquidacion_animales la
+         JOIN animales a ON a.id = la.id_animal
+         WHERE a.id_contrato = ?'
+    );
+    $stmt->execute([$idContrato]);
+    $totales = $stmt->fetch();
+
+    $stmtSocios = $pdo->prepare('SELECT COUNT(*) FROM contrato_socios WHERE id_contrato = ?');
+    $stmtSocios->execute([$idContrato]);
+    $nSocios = max(1, (int)$stmtSocios->fetchColumn());
+    $gananciaPorSocio = round((float)$totales['tot_ganancia'] / $nSocios, 2);
+
+    $stmtCierre = $pdo->prepare(
+        'INSERT INTO cierre_contrato
+         (id_contrato, fecha_cierre, total_animales, animales_vendidos, animales_muertos,
+          costo_total_compra, costo_total_flete_entrada, costo_total_manutencion,
+          costo_total_flete_salida, costo_total, ingreso_total_ventas,
+          ganancia_total, ganancia_por_socio)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'
+    );
+    $stmtCierre->execute([
+        $idContrato, $fechaCierre,
+        $totales['total'], $totales['vendidos'], $totales['muertos'],
+        $totales['tot_compra'], $totales['tot_flete_ent'],
+        $totales['tot_manutencion'], $totales['tot_flete_sal'],
+        $totales['tot_costos'], $totales['tot_ventas'],
+        $totales['tot_ganancia'], $gananciaPorSocio,
+    ]);
+    $idCierre = (int)$pdo->lastInsertId();
+
+    $stmtSociosList = $pdo->prepare('SELECT id_socio, porcentaje FROM contrato_socios WHERE id_contrato = ?');
+    $stmtSociosList->execute([$idContrato]);
+    $stmtDetSocio = $pdo->prepare(
+        'INSERT INTO cierre_socios_detalle (id_cierre, id_socio, porcentaje, ganancia) VALUES (?,?,?,?)'
+    );
+    foreach ($stmtSociosList->fetchAll() as $socio) {
+        $ganSocio = round((float)$totales['tot_ganancia'] * ((float)$socio['porcentaje'] / 100), 2);
+        $stmtDetSocio->execute([$idCierre, $socio['id_socio'], $socio['porcentaje'], $ganSocio]);
+    }
 }
 
 // ── DELETE ────────────────────────────────────────────────────
