@@ -50,14 +50,18 @@ function getCierreContrato(int $idContrato): void {
     $stmt2->execute([$cierre['id']]);
     $cierre['detalle_socios'] = $stmt2->fetchAll();
 
-    // Liquidaciones del contrato
+    // Liquidaciones que contienen animales de este contrato
     $stmt3 = $pdo->prepare(
         'SELECT l.id, l.numero_factura, l.fecha_venta, l.peso_total_kg,
                 l.valor_total_venta, cl.nombre AS cliente,
                 (SELECT COUNT(*) FROM liquidacion_animales la WHERE la.id_liquidacion = l.id) AS animales
          FROM liquidaciones l
-         JOIN clientes cl ON cl.id = l.id_cliente
-         WHERE l.id_contrato = ? ORDER BY l.fecha_venta'
+         LEFT JOIN clientes cl ON cl.id = l.id_cliente
+         WHERE l.id IN (SELECT DISTINCT la.id_liquidacion
+                        FROM liquidacion_animales la
+                        JOIN animales a ON a.id = la.id_animal
+                        WHERE a.id_contrato = ?)
+         ORDER BY l.fecha_venta'
     );
     $stmt3->execute([$idContrato]);
     $cierre['liquidaciones'] = $stmt3->fetchAll();
@@ -79,12 +83,12 @@ function getEstadoContrato(int $idContrato): void {
                 (SELECT COUNT(*) FROM animales a WHERE a.id_contrato = c.id AND a.estado="muerto")   AS muertos,
                 (SELECT COALESCE(SUM(la.ganancia),0)
                  FROM liquidacion_animales la
-                 JOIN liquidaciones l ON l.id = la.id_liquidacion
-                 WHERE l.id_contrato = c.id) AS ganancia_acumulada,
+                 JOIN animales ax ON ax.id = la.id_animal
+                 WHERE ax.id_contrato = c.id) AS ganancia_acumulada,
                 (SELECT COALESCE(SUM(la.costo_total),0)
                  FROM liquidacion_animales la
-                 JOIN liquidaciones l ON l.id = la.id_liquidacion
-                 WHERE l.id_contrato = c.id) AS costos_acumulados
+                 JOIN animales ax ON ax.id = la.id_animal
+                 WHERE ax.id_contrato = c.id) AS costos_acumulados
          FROM contratos_compra c
          JOIN empresas e    ON e.id  = c.id_empresa_compra
          JOIN tipos_animal t ON t.id = c.id_tipo_animal

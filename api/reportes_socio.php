@@ -174,11 +174,11 @@ function getContratosSocio(int $id, string $desde, string $hasta, string $estado
             JOIN cierre_socios_detalle csd ON csd.id_cierre=ci.id AND csd.id_socio=cs.id_socio
             WHERE ci.id_contrato=cc.id LIMIT 1) AS ganancia_socio,
            (SELECT COALESCE(SUM(la.costo_total)*(cs.porcentaje/100),0)
-            FROM liquidacion_animales la JOIN liquidaciones l ON l.id=la.id_liquidacion
-            WHERE l.id_contrato=cc.id) AS costos_acumulados_socio,
+            FROM liquidacion_animales la JOIN animales ax ON ax.id=la.id_animal
+            WHERE ax.id_contrato=cc.id) AS costos_acumulados_socio,
            (SELECT COALESCE(SUM(la.valor_venta)*(cs.porcentaje/100),0)
-            FROM liquidacion_animales la JOIN liquidaciones l ON l.id=la.id_liquidacion
-            WHERE l.id_contrato=cc.id AND la.tipo_salida='venta') AS ventas_acumuladas_socio
+            FROM liquidacion_animales la JOIN animales ax ON ax.id=la.id_animal
+            WHERE ax.id_contrato=cc.id AND la.tipo_salida='venta') AS ventas_acumuladas_socio
          FROM contrato_socios cs
          JOIN contratos_compra cc ON cc.id=cs.id_contrato
          JOIN tipos_animal t ON t.id=cc.id_tipo_animal
@@ -252,8 +252,8 @@ function getGananciaSocio(int $id, string $desde, string $hasta): void {
            ROUND(ci.ingreso_total_ventas        *(csd.porcentaje/100),2) AS ingresos_socio,
            (SELECT COALESCE(SUM(la.peso_salida_kg),0)
             FROM liquidacion_animales la
-            JOIN liquidaciones lq ON lq.id=la.id_liquidacion
-            WHERE lq.id_contrato=cc.id AND la.tipo_salida='venta')       AS peso_vendido_kg,
+            JOIN animales ax ON ax.id=la.id_animal
+            WHERE ax.id_contrato=cc.id AND la.tipo_salida='venta')       AS peso_vendido_kg,
            t.nombre AS tipo_animal, e.nombre AS empresa
          FROM contrato_socios cs
          JOIN contratos_compra cc ON cc.id=cs.id_contrato

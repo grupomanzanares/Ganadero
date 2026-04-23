@@ -143,7 +143,12 @@ function handleGet(string $action, int $id): void {
     $where  = ['1=1'];
     $params = [];
     if ($idContrato > 0) {
-        $where[]  = 'l.id_contrato = ?';
+        // Incluye cualquier liquidación que contenga al menos un animal de este contrato,
+        // independientemente de cuál sea el id_contrato cabecera de la liquidación.
+        $where[]  = 'l.id IN (SELECT DISTINCT la.id_liquidacion
+                               FROM liquidacion_animales la
+                               JOIN animales a ON a.id = la.id_animal
+                               WHERE a.id_contrato = ?)';
         $params[] = $idContrato;
     }
 
@@ -270,7 +275,8 @@ function handlePost(): void {
         $idLiq = (int)$pdo->lastInsertId();
 
         // Procesar animales
-        $cacheFecha    = [];
+        $cacheFecha        = [];
+        $contratosAfectados = [];   // todos los contratos con animales en esta liquidación
         $stmtAnimal    = $pdo->prepare('SELECT * FROM animales WHERE id = ?');
         $stmtUpdAnimal = $pdo->prepare('UPDATE animales SET estado = ? WHERE id = ?');
         $stmtLiqAn     = $pdo->prepare(
@@ -293,8 +299,11 @@ function handlePost(): void {
                 throw new Exception("Animal ID {$idAnimal} no disponible o ya liquidado.");
             }
 
-            // Cache fecha compra por contrato
+            // Registrar contrato real del animal
             $idCont = (int)$a['id_contrato'];
+            $contratosAfectados[$idCont] = true;
+
+            // Cache fecha compra por contrato
             if (!isset($cacheFecha[$idCont])) {
                 $sf = $pdo->prepare('SELECT fecha_compra FROM contratos_compra WHERE id = ?');
                 $sf->execute([$idCont]);
@@ -361,25 +370,27 @@ function handlePost(): void {
             $stmtUpdAnimal->execute([$nuevoEstado, $idAnimal]);
         }
 
-        // Verificar si el contrato queda cerrado
-        $stmtCheck = $pdo->prepare(
-            "SELECT COUNT(*) FROM animales WHERE id_contrato = ? AND estado = 'activo'"
-        );
-        $stmtCheck->execute([$data['id_contrato']]);
-        $pendientes = (int)$stmtCheck->fetchColumn();
+        // Verificar cierre para TODOS los contratos cuyos animales fueron liquidados
+        $stmtCheck    = $pdo->prepare("SELECT COUNT(*) FROM animales WHERE id_contrato = ? AND estado = 'activo'");
+        $stmtCerrar   = $pdo->prepare("UPDATE contratos_compra SET estado='cerrado' WHERE id=?");
+        $contratosCerrados = [];
 
-        if ($pendientes === 0) {
-            generarCierre((int)$data['id_contrato'], $pdo, $data['fecha_venta']);
-            $pdo->prepare("UPDATE contratos_compra SET estado='cerrado' WHERE id=?")
-                ->execute([$data['id_contrato']]);
+        foreach (array_keys($contratosAfectados) as $contId) {
+            $stmtCheck->execute([$contId]);
+            if ((int)$stmtCheck->fetchColumn() === 0) {
+                generarCierre($contId, $pdo, $data['fecha_venta']);
+                $stmtCerrar->execute([$contId]);
+                $contratosCerrados[] = $contId;
+            }
         }
 
         $pdo->commit();
         Logger::log('crear', 'liquidaciones', $idLiq);
         Response::success([
-            'id'               => $idLiq,
-            'peso_total_kg'    => $pesoTotalLote,
-            'contrato_cerrado' => ($pendientes === 0),
+            'id'                => $idLiq,
+            'peso_total_kg'     => $pesoTotalLote,
+            'contrato_cerrado'  => in_array((int)$data['id_contrato'], $contratosCerrados),
+            'contratos_cerrados'=> $contratosCerrados,
         ], 'Liquidación registrada correctamente.');
 
     } catch (Throwable $e) {
@@ -391,9 +402,10 @@ function handlePost(): void {
 
 // ── Cierre automático del contrato ───────────────────────────
 function generarCierre(int $idContrato, PDO $pdo, string $fechaCierre): void {
-    // Totales desde liquidacion_animales
+    // Totales desde liquidacion_animales usando el contrato REAL del animal,
+    // no el id_contrato cabecera de la liquidación (que puede ser otro contrato).
     $stmt = $pdo->prepare(
-        'SELECT 
+        'SELECT
             COUNT(*)                  AS total,
             SUM(CASE WHEN tipo_salida="venta"  THEN 1 ELSE 0 END) AS vendidos,
             SUM(CASE WHEN tipo_salida="muerte" THEN 1 ELSE 0 END) AS muertos,
@@ -405,8 +417,8 @@ function generarCierre(int $idContrato, PDO $pdo, string $fechaCierre): void {
             SUM(valor_venta)          AS tot_ventas,
             SUM(ganancia)             AS tot_ganancia
          FROM liquidacion_animales la
-         JOIN liquidaciones l ON l.id = la.id_liquidacion
-         WHERE l.id_contrato = ?'
+         JOIN animales a ON a.id = la.id_animal
+         WHERE a.id_contrato = ?'
     );
     $stmt->execute([$idContrato]);
     $totales = $stmt->fetch();
