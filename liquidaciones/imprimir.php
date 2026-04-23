@@ -408,37 +408,84 @@ $fechaImpresion = date('d/m/Y H:i');
     .rf-valor-g   { color: #059669; }
     .rf-valor-p   { color: #dc2626; }
 
-    /* ─── Socios ────────────────────────────────────────── */
-    .socios-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-      gap: 8px;
+    /* ─── Socios (tabla compacta) ───────────────────────── */
+    .socios-tabla {
+      width: 100%;
+      border-collapse: collapse;
       border: 1.5px solid #e2e8f0;
+      border-top: none;
       border-radius: 0 0 6px 6px;
-      padding: 10px;
+      font-size: 9.5px;
       margin-bottom: 14px;
+      overflow: hidden;
     }
-    .socio-card {
-      border: 1px solid #e2e8f0;
-      border-radius: 6px;
-      padding: 8px 10px;
-      text-align: center;
+    .socios-tabla thead tr { background: #f1f5f9; }
+    .socios-tabla thead th {
+      padding: 4px 8px;
+      text-align: left;
+      font-size: 8px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .06em;
+      color: #64748b; border-bottom: 1px solid #e2e8f0;
+      white-space: nowrap;
     }
-    .socio-inicial {
-      width: 32px; height: 32px;
-      border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-weight: 800; font-size: 14px;
-      margin: 0 auto 6px;
+    .socios-tabla thead th:last-child { text-align: right; }
+    .socios-tabla td {
+      padding: 4px 8px;
+      border-bottom: 1px solid #f1f5f9;
+      vertical-align: middle;
+      color: #334155;
     }
-    .inicial-g { background: #d1fae5; color: #059669; }
-    .inicial-p { background: #fee2e2; color: #dc2626; }
-    .socio-nombre { font-size: 10px; font-weight: 700; color: #1e293b; }
-    .socio-empresa { font-size: 8.5px; color: #94a3b8; }
-    .socio-pct { font-size: 9px; color: #64748b; margin: 3px 0 1px; }
-    .socio-gan { font-size: 14px; font-weight: 900; }
-    .socio-gan-g { color: #059669; }
-    .socio-gan-p { color: #dc2626; }
+    .socios-tabla tr:last-child td { border-bottom: none; }
+    .socios-tabla .td-contrato {
+      background: #f8fafc;
+      border-right: 1px solid #e2e8f0;
+      border-bottom: 2px solid #e2e8f0 !important;
+      vertical-align: middle;
+      padding: 5px 8px;
+      white-space: nowrap;
+    }
+    .socios-tabla .cod-contrato {
+      font-family: monospace; font-size: 9px; font-weight: 800;
+      color: #1e293b; background: #e2e8f0;
+      padding: 1px 5px; border-radius: 3px;
+      display: inline-block; margin-bottom: 2px;
+    }
+    .socios-tabla .meta-contrato {
+      font-size: 8px; color: #94a3b8; line-height: 1.4;
+    }
+    .socios-tabla .meta-contrato span {
+      font-weight: 700; color: #475569;
+    }
+    .socios-tabla .td-gan-cont {
+      text-align: right; font-weight: 800;
+      border-right: 1px solid #e2e8f0;
+      white-space: nowrap;
+    }
+    .dot {
+      display: inline-block; width: 9px; height: 9px;
+      border-radius: 50%; margin-right: 5px;
+      vertical-align: middle; flex-shrink: 0;
+    }
+    .dot-g { background: #059669; }
+    .dot-p { background: #dc2626; }
+    .td-nombre { min-width: 110px; }
+    .td-empresa { font-size: 8px; color: #94a3b8; }
+    .td-pct { text-align: center; color: #475569; font-weight: 600;
+              white-space: nowrap; width: 40px; }
+    .td-gan-socio { text-align: right; font-weight: 800;
+                    white-space: nowrap; width: 80px; }
+    .gan-pos { color: #059669; }
+    .gan-neg { color: #dc2626; }
+    .fila-total {
+      background: #1e293b !important;
+    }
+    .fila-total td {
+      border-bottom: none !important;
+      padding: 5px 8px;
+      color: #e2e8f0 !important;
+      font-weight: 700;
+      font-size: 9px;
+    }
 
     /* ─── Observación ───────────────────────────────────── */
     .obs-box {
@@ -507,7 +554,8 @@ $fechaImpresion = date('d/m/Y H:i');
       .tabla-animales tfoot tr,
       .costos-tabla .total-row,
       .resultado-final,
-      .socio-inicial { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .fila-total,
+      .dot { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       @page { margin: 8mm 10mm; size: A4; }
     }
   </style>
@@ -711,106 +759,88 @@ $fechaImpresion = date('d/m/Y H:i');
 
   </div>
 
-  <!-- DISTRIBUCIÓN POR SOCIOS (agrupada por contrato) -->
-  <?php if (!empty($sociosPorContrato)): ?>
+  <!-- DISTRIBUCIÓN POR SOCIOS (tabla compacta agrupada por contrato) -->
+  <?php if (!empty($sociosPorContrato)):
+    // Pre-calcular totales consolidados si hay más de un contrato
+    $totalesSocio = [];
+    foreach ($sociosPorContrato as $grupo) {
+        foreach ($grupo['socios'] as $s) {
+            $k = $s['socio'] . '||' . $s['empresa'];
+            if (!isset($totalesSocio[$k])) {
+                $totalesSocio[$k] = ['socio' => $s['socio'], 'empresa' => $s['empresa'], 'total' => 0.0];
+            }
+            $totalesSocio[$k]['total'] += (float)$s['ganancia_estimada'];
+        }
+    }
+    $multiContrato = count($sociosPorContrato) > 1;
+  ?>
   <div class="no-break">
     <div class="seccion-titulo">
-      Distribución por socios
-      <?php if (count($sociosPorContrato) > 1): ?>
-        — <?= count($sociosPorContrato) ?> contratos con socios distintos
-      <?php endif; ?>
+      Distribución por socios<?php if ($multiContrato): ?> — <?= count($sociosPorContrato) ?> contratos<?php endif; ?>
     </div>
-    <div style="border:1.5px solid #e2e8f0;border-top:none;border-radius:0 0 6px 6px;overflow:hidden;">
-
-      <?php foreach ($sociosPorContrato as $contId => $grupo):
-        $ganCont = (float)$grupo['ganancia_contrato'];
-        $ganContPos = $ganCont >= 0;
-        $nSocios = count($grupo['socios']);
-      ?>
-      <!-- Fila encabezado del contrato -->
-      <div style="display:flex;justify-content:space-between;align-items:center;
-                  padding:6px 12px;background:#f8fafc;
-                  border-bottom:1px solid #e2e8f0;
-                  <?= !$loop_first ?? '' ?>">
-        <div style="display:flex;align-items:center;gap:8px">
-          <span style="font-family:monospace;font-size:10px;font-weight:800;
-                       color:#1e293b;background:#e2e8f0;padding:2px 7px;border-radius:4px">
-            <?= htmlspecialchars($grupo['contrato_codigo']) ?>
-          </span>
-          <span style="font-size:9px;color:#64748b">
-            <?= $grupo['animales_contrato'] ?> animal<?= $grupo['animales_contrato'] != 1 ? 'es' : '' ?>
-            · <?= $nSocios ?> socio<?= $nSocios != 1 ? 's' : '' ?>
-          </span>
-        </div>
-        <div style="text-align:right">
-          <span style="font-size:8px;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;margin-right:6px">
-            Ganancia del contrato
-          </span>
-          <span style="font-size:12px;font-weight:800;color:<?= $ganContPos ? '#059669' : '#dc2626' ?>">
-            <?= m($ganCont) ?>
-          </span>
-        </div>
-      </div>
-
-      <!-- Socios de este contrato -->
-      <div class="socios-grid" style="border:none;border-radius:0;border-bottom:<?= array_key_last($sociosPorContrato) !== $contId ? '2px solid #e2e8f0' : 'none' ?>">
+    <table class="socios-tabla">
+      <thead>
+        <tr>
+          <th style="width:90px">Contrato</th>
+          <th>Socio</th>
+          <th style="width:36px;text-align:center">Part.</th>
+          <th style="width:88px;text-align:right">Gan. contrato</th>
+          <th style="width:88px;text-align:right">Gan. socio</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php foreach ($sociosPorContrato as $contId => $grupo):
+          $ganCont    = (float)$grupo['ganancia_contrato'];
+          $ganContPos = $ganCont >= 0;
+          $nSocios    = count($grupo['socios']);
+          $firstSocio = true;
+        ?>
         <?php foreach ($grupo['socios'] as $s):
-          $sg = (float)$s['ganancia_estimada'];
+          $sg    = (float)$s['ganancia_estimada'];
           $sgPos = $sg >= 0;
         ?>
-        <div class="socio-card">
-          <div class="socio-inicial <?= $sgPos ? 'inicial-g' : 'inicial-p' ?>">
-            <?= mb_strtoupper(mb_substr($s['socio'], 0, 1)) ?>
-          </div>
-          <div class="socio-nombre"><?= htmlspecialchars($s['socio']) ?></div>
-          <div class="socio-empresa"><?= htmlspecialchars($s['empresa']) ?></div>
-          <div class="socio-pct"><?= $s['porcentaje'] ?>% de participación</div>
-          <div class="socio-gan <?= $sgPos ? 'socio-gan-g' : 'socio-gan-p' ?>"><?= m($sg) ?></div>
-        </div>
-        <?php endforeach; ?>
-      </div>
-
-      <?php endforeach; ?>
-
-      <?php
-      // Si hay más de un contrato, mostrar totales por socio al final
-      if (count($sociosPorContrato) > 1):
-        // Agregar ganancias por nombre de socio entre contratos
-        $totalesSocio = [];
-        foreach ($sociosPorContrato as $grupo) {
-            foreach ($grupo['socios'] as $s) {
-                $k = $s['socio'] . '||' . $s['empresa'];
-                if (!isset($totalesSocio[$k])) {
-                    $totalesSocio[$k] = ['socio' => $s['socio'], 'empresa' => $s['empresa'], 'total' => 0];
-                }
-                $totalesSocio[$k]['total'] += (float)$s['ganancia_estimada'];
-            }
-        }
-      ?>
-      <!-- Total consolidado por socio -->
-      <div style="background:#1e293b;padding:8px 12px;">
-        <div style="font-size:8px;font-weight:700;text-transform:uppercase;
-                    letter-spacing:.1em;color:#94a3b8;margin-bottom:6px">
-          Total consolidado por socio
-        </div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px">
-          <?php foreach ($totalesSocio as $ts):
-            $tsPos = $ts['total'] >= 0;
-          ?>
-          <div style="background:rgba(255,255,255,.08);border-radius:6px;
-                      padding:6px 12px;min-width:130px">
-            <div style="font-size:9px;font-weight:700;color:#e2e8f0"><?= htmlspecialchars($ts['socio']) ?></div>
-            <div style="font-size:8px;color:#64748b;margin-bottom:3px"><?= htmlspecialchars($ts['empresa']) ?></div>
-            <div style="font-size:14px;font-weight:900;color:<?= $tsPos ? '#6ee7b7' : '#fca5a5' ?>">
-              <?= m($ts['total']) ?>
+        <tr>
+          <?php if ($firstSocio): ?>
+          <td class="td-contrato" rowspan="<?= $nSocios ?>">
+            <span class="cod-contrato"><?= htmlspecialchars($grupo['contrato_codigo']) ?></span>
+            <div class="meta-contrato">
+              <span><?= $grupo['animales_contrato'] ?></span> anim.
             </div>
-          </div>
-          <?php endforeach; ?>
-        </div>
-      </div>
+          </td>
+          <?php endif; ?>
+          <td class="td-nombre">
+            <span class="dot <?= $sgPos ? 'dot-g' : 'dot-p' ?>"></span><?= htmlspecialchars($s['socio']) ?>
+            <div class="td-empresa"><?= htmlspecialchars($s['empresa']) ?></div>
+          </td>
+          <td class="td-pct"><?= $s['porcentaje'] ?>%</td>
+          <?php if ($firstSocio): ?>
+          <td class="td-gan-cont <?= $ganContPos ? 'gan-pos' : 'gan-neg' ?>" rowspan="<?= $nSocios ?>"><?= m($ganCont) ?></td>
+          <?php endif; ?>
+          <td class="td-gan-socio <?= $sgPos ? 'gan-pos' : 'gan-neg' ?>"><?= m($sg) ?></td>
+        </tr>
+        <?php $firstSocio = false; endforeach; ?>
+        <?php endforeach; ?>
+      </tbody>
+      <?php if ($multiContrato): ?>
+      <tfoot>
+        <?php foreach ($totalesSocio as $ts):
+          $tsPos = $ts['total'] >= 0;
+        ?>
+        <tr class="fila-total">
+          <?php if ($ts === reset($totalesSocio)): ?>
+          <td rowspan="<?= count($totalesSocio) ?>" style="font-size:8px;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;vertical-align:middle">
+            Total<br>consolidado
+          </td>
+          <?php endif; ?>
+          <td colspan="2" style="color:#e2e8f0"><?= htmlspecialchars($ts['socio']) ?>
+            <span style="font-size:7.5px;color:#64748b;margin-left:4px"><?= htmlspecialchars($ts['empresa']) ?></span>
+          </td>
+          <td style="text-align:right;color:<?= $tsPos ? '#6ee7b7' : '#fca5a5' ?>"><?= m($ts['total']) ?></td>
+        </tr>
+        <?php endforeach; ?>
+      </tfoot>
       <?php endif; ?>
-
-    </div>
+    </table>
   </div>
   <?php endif; ?>
 

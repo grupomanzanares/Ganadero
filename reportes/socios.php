@@ -505,49 +505,77 @@ function ch1_donutAnimales() {
   });
 }
 
-// 2. Barras resultado por contrato
+// 2. Barras resultado por contrato — cerrados (cierre real) + abiertos (acumulado parcial)
 function ch2_barrasContratos() {
   dch('c2');
-  const gan  = DATOS.ganancias.slice(0,10);
-  const abr  = DATOS.contratos.filter(c=>c.estado==='abierto').slice(0,5);
-  const datos = [
-    ...gan.map(g=>({
-      cod:g.codigo,
-      ing:parseFloat(g.ingresos_socio),
-      cos:parseFloat(g.costo_total_socio),
-      gan:parseFloat(g.ganancia_socio),
-    })),
-    ...abr.map(c=>({
-      cod:c.codigo+'*',
-      ing:parseFloat(c.ventas_acumuladas_socio||0),
-      cos:parseFloat(c.costos_acumulados_socio||0),
-      gan:parseFloat(c.ventas_acumuladas_socio||0)-parseFloat(c.costos_acumulados_socio||0),
-    })),
-  ];
-  if (!datos.length) return;
+  // Contratos cerrados: datos del cierre oficial
+  const cerrados = DATOS.ganancias.slice(0,10).map(g=>({
+    cod : g.codigo,
+    ing : parseFloat(g.ingresos_socio    || 0),
+    cos : parseFloat(g.costo_total_socio || 0),
+    gan : parseFloat(g.ganancia_socio    || 0),
+    tipo: 'cerrado',
+  }));
+  // Contratos abiertos: datos acumulados de liquidaciones parciales
+  const abiertos = DATOS.contratos
+    .filter(c => c.estado === 'abierto')
+    .slice(0, 5)
+    .map(c => ({
+      cod : c.codigo + '*',
+      ing : parseFloat(c.ventas_acumuladas_socio  || 0),
+      cos : parseFloat(c.costos_acumulados_socio  || 0),
+      gan : parseFloat(c.ventas_acumuladas_socio  || 0)
+           - parseFloat(c.costos_acumulados_socio || 0),
+      tipo: 'abierto',
+    }));
+
+  const datos = [...cerrados, ...abiertos];
+  if (!datos.length) {
+    document.getElementById('ch2').closest('.gc').innerHTML +=
+      '<p class="text-center text-slate-400 text-xs mt-4 pb-2">Sin liquidaciones registradas aún</p>';
+    return;
+  }
 
   CH.c2 = new Chart(document.getElementById('ch2'), {
-    type:'bar',
-    data:{
-      labels:datos.map(d=>d.cod),
-      datasets:[
-        { label:'Ingresos', data:datos.map(d=>d.ing), backgroundColor:'rgba(5,150,105,.7)', borderRadius:3 },
-        { label:'Costos',   data:datos.map(d=>d.cos), backgroundColor:'rgba(239,68,68,.6)', borderRadius:3 },
-        { label:'Ganancia', data:datos.map(d=>d.gan),
-          backgroundColor:datos.map(d=>d.gan>=0?'rgba(99,102,241,.8)':'rgba(239,68,68,.8)'),
-          borderRadius:3 },
+    type: 'bar',
+    data: {
+      labels: datos.map(d => d.cod),
+      datasets: [
+        { label:'Ingresos',
+          data: datos.map(d => d.ing),
+          backgroundColor: datos.map(d => d.tipo==='cerrado'
+            ? 'rgba(5,150,105,.75)' : 'rgba(5,150,105,.35)'),
+          borderRadius: 3 },
+        { label:'Costos',
+          data: datos.map(d => d.cos),
+          backgroundColor: datos.map(d => d.tipo==='cerrado'
+            ? 'rgba(239,68,68,.65)' : 'rgba(239,68,68,.3)'),
+          borderRadius: 3 },
+        { label:'Ganancia / Resultado',
+          data: datos.map(d => d.gan),
+          backgroundColor: datos.map(d => d.gan >= 0
+            ? 'rgba(99,102,241,.8)' : 'rgba(239,68,68,.85)'),
+          borderRadius: 3 },
       ],
     },
-    options:{
+    options: {
       ...TT,
-      plugins:{
-        legend:{ position:'top', labels:{font:{family:'DM Sans',size:10},color:'#64748b'} },
-        datalabels:{ display:false },
-        tooltip:{ callbacks:{ label:ctx=>` ${ctx.dataset.label}: ${App.moneda(ctx.raw)}` } },
+      plugins: {
+        legend: { position:'top', labels:{ font:{family:'DM Sans',size:10}, color:'#64748b',
+          generateLabels: chart => {
+            const base = Chart.defaults.plugins.legend.labels.generateLabels(chart);
+            base.push({ text:'* abierto (parcial)', fillStyle:'transparent',
+              strokeStyle:'#94a3b8', lineWidth:1, fontColor:'#94a3b8',
+              pointStyle:'line', hidden:false, index:-1 });
+            return base;
+          }
+        }},
+        datalabels: { display: false },
+        tooltip: { callbacks:{ label: ctx => ` ${ctx.dataset.label}: ${App.moneda(ctx.raw)}` } },
       },
-      scales:{
-        x:{ ticks:{font:{size:9},color:'#64748b'}, grid:{display:false} },
-        y:{ ticks:{font:{size:9},color:'#64748b',callback:v=>mK(v)}, grid:{color:'#f1f5f9'} },
+      scales: {
+        x: { ticks:{font:{size:9},color:'#64748b'}, grid:{display:false} },
+        y: { ticks:{font:{size:9},color:'#64748b',callback:v=>mK(v)}, grid:{color:'#f1f5f9'} },
       },
     },
   });
@@ -590,27 +618,58 @@ function ch3_lineaEvolucion() {
   });
 }
 
-// 4. Donut costos
+// 4. Donut costos — usa ganancias (cerrados) + costos acumulados de abiertos
 function ch4_donutCostos() {
   dch('c4');
-  const g = DATOS.ganancias;
-  if (!g.length) return;
-  const sm=k=>g.reduce((s,x)=>s+(parseFloat(x[k])||0),0);
-  const vals = [sm('costo_compra_socio'),sm('costo_flete_ent_socio'),sm('costo_manten_socio'),sm('costo_flete_sal_socio'),sm('costo_otros_socio')];
-  const labs  = ['Compra','Fl.Entrada','Manutención','Fl.Salida','Otros'];
-  const cols  = [C.slate,'#3b82f6',C.amber,C.indigo,C.gray];
-  const total = vals.reduce((s,x)=>s+x,0);
+
+  // Sumar componentes de contratos CERRADOS (datos exactos del cierre)
+  const g  = DATOS.ganancias;
+  const sm = k => g.reduce((s,x) => s + (parseFloat(x[k])||0), 0);
+
+  let compra   = sm('costo_compra_socio');
+  let fleteEnt = sm('costo_flete_ent_socio');
+  let manten   = sm('costo_manten_socio');
+  let fleteSal = sm('costo_flete_sal_socio');
+  let otros    = sm('costo_otros_socio');
+
+  // Sumar costos de contratos ABIERTOS (parciales, proporcionales)
+  // Solo tenemos el total acumulado; lo agregamos como una masa única
+  const costoAbiertos = DATOS.contratos
+    .filter(c => c.estado === 'abierto')
+    .reduce((s,c) => s + (parseFloat(c.costos_acumulados_socio)||0), 0);
+
+  const totalGeneral = compra + fleteEnt + manten + fleteSal + otros + costoAbiertos;
+  if (totalGeneral <= 0) {
+    document.getElementById('ch4').closest('.gc').innerHTML +=
+      '<p class="text-center text-slate-400 text-xs mt-4 pb-2">Sin costos registrados aún</p>';
+    return;
+  }
+
+  const vals = [compra, fleteEnt, manten, fleteSal, otros, costoAbiertos];
+  const labs = ['Compra','Flete entrada','Manutención','Flete salida','Otros (cierre)','Abiertos acum.'];
+  const cols = [C.slate,'#3b82f6',C.amber,C.indigo,C.gray,'#94a3b8'];
+  // Filtrar valores 0 para no contaminar el donut
+  const idx   = vals.map((_,i)=>i).filter(i=>vals[i]>0);
+  const vFilt = idx.map(i=>vals[i]);
+  const lFilt = idx.map(i=>labs[i]);
+  const cFilt = idx.map(i=>cols[i]);
+  const total = vFilt.reduce((s,x)=>s+x,0);
 
   CH.c4 = new Chart(document.getElementById('ch4'), {
-    type:'doughnut',
-    data:{ labels:labs, datasets:[{ data:vals, backgroundColor:cols, borderWidth:2, borderColor:'#fff', hoverOffset:5 }] },
-    options:{
-      cutout:'60%',
-      plugins:{
-        legend:{ position:'bottom', labels:{font:{family:'DM Sans',size:9},color:'#64748b',padding:6,boxWidth:9} },
-        datalabels:{ color:'#fff', font:{weight:'bold',size:9},
-          formatter:(v)=>total>0&&v/total>=0.05?Math.round(v/total*100)+'%':'' },
-        tooltip:{ callbacks:{ label:ctx=>` ${ctx.label}: ${App.moneda(ctx.raw)}` } },
+    type: 'doughnut',
+    data: { labels:lFilt, datasets:[{
+      data: vFilt, backgroundColor: cFilt,
+      borderWidth:2, borderColor:'#fff', hoverOffset:5
+    }]},
+    options: {
+      cutout: '60%',
+      plugins: {
+        legend: { position:'bottom', labels:{font:{family:'DM Sans',size:9},
+          color:'#64748b', padding:6, boxWidth:9 }},
+        datalabels: { color:'#fff', font:{weight:'bold',size:9},
+          formatter: v => total>0&&v/total>=0.04 ? Math.round(v/total*100)+'%':'' },
+        tooltip: { callbacks:{ label: ctx =>
+          ` ${ctx.label}: ${App.moneda(ctx.raw)} (${(ctx.raw/total*100).toFixed(1)}%)` }},
       },
     },
   });
@@ -647,36 +706,57 @@ function ch5_barrasAnimales() {
   });
 }
 
-// 6. Precio compra vs venta
+// 6. Precio compra vs venta — usa ganancias (datos del cierre oficial)
 function ch6_compraVenta() {
   dch('c6');
-  const cer = DATOS.contratos.filter(c=>c.estado==='cerrado').slice(0,10);
-  if (!cer.length) return;
+  // Usar DATOS.ganancias: tienen valor_unitario_kg (compra) e ingreso/peso reales del cierre
+  const cer = DATOS.ganancias.slice(0,10);
+  if (!cer.length) {
+    document.getElementById('ch6').closest('.gc').innerHTML +=
+      '<p class="text-center text-slate-400 text-xs mt-4 pb-2">Sin contratos cerrados en el período</p>';
+    return;
+  }
+
+  const precioCompra = cer.map(g => parseFloat(g.valor_unitario_kg || 0));
+  const precioVenta  = cer.map(g => {
+    // Usar peso_vendido_kg (kg reales de venta) para calcular $/kg correcto
+    const ingresos     = parseFloat(g.ingreso_total_ventas || 0);
+    const pesoVendido  = parseFloat(g.peso_vendido_kg     || 0);
+    return pesoVendido > 0 ? Math.round(ingresos / pesoVendido) : 0;
+  });
+
   CH.c6 = new Chart(document.getElementById('ch6'), {
-    type:'bar',
-    data:{
-      labels:cer.map(c=>c.codigo),
-      datasets:[
-        { label:'$/kg compra', data:cer.map(c=>parseFloat(c.valor_unitario_kg||0)),
+    type: 'bar',
+    data: {
+      labels: cer.map(g => g.codigo),
+      datasets: [
+        { label:'$/kg compra',
+          data: precioCompra,
           backgroundColor:'rgba(239,68,68,.65)', borderRadius:3 },
-        { label:'$/kg venta prom.', data:cer.map(c=>{
-            const ing=parseFloat(c.ventas_acumuladas_socio||0);
-            const pes=parseFloat(c.peso_total_kg||1);
-            return ing>0&&pes>0?Math.round(ing/pes):0;
-          }), backgroundColor:'rgba(5,150,105,.7)', borderRadius:3 },
+        { label:'$/kg venta prom.',
+          data: precioVenta,
+          backgroundColor:'rgba(5,150,105,.7)', borderRadius:3 },
       ],
     },
-    options:{
+    options: {
       ...TT,
-      plugins:{
-        legend:{ position:'top', labels:{font:{family:'DM Sans',size:10},color:'#64748b'} },
-        datalabels:{ anchor:'end',align:'top',color:'#475569',font:{size:8,weight:'600'},
-          formatter:v=>v>0?mK(v):'' },
-        tooltip:{ callbacks:{ label:ctx=>` ${ctx.dataset.label}: ${App.moneda(ctx.raw)}/kg` } },
+      plugins: {
+        legend: { position:'top', labels:{font:{family:'DM Sans',size:10},color:'#64748b'} },
+        datalabels: { anchor:'end', align:'top', color:'#475569',
+          font:{size:8,weight:'600'}, formatter: v => v>0 ? mK(v) : '' },
+        tooltip: { callbacks:{
+          label: ctx => {
+            const diff = precioVenta[ctx.dataIndex] - precioCompra[ctx.dataIndex];
+            const extra = ctx.datasetIndex===1 && diff!==0
+              ? ` (${diff>=0?'+':''}${mK(diff)}/kg vs compra)`
+              : '';
+            return ` ${ctx.dataset.label}: ${App.moneda(ctx.raw)}/kg${extra}`;
+          }
+        }},
       },
-      scales:{
-        x:{ ticks:{font:{size:9},color:'#64748b'}, grid:{display:false} },
-        y:{ ticks:{font:{size:9},color:'#64748b',callback:v=>mK(v)}, grid:{color:'#f1f5f9'} },
+      scales: {
+        x: { ticks:{font:{size:9},color:'#64748b'}, grid:{display:false} },
+        y: { ticks:{font:{size:9},color:'#64748b',callback:v=>mK(v)}, grid:{color:'#f1f5f9'} },
       },
     },
   });

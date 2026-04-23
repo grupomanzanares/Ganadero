@@ -237,16 +237,23 @@ function getGananciaSocio(int $id, string $desde, string $hasta): void {
            ci.total_animales, ci.animales_vendidos, ci.animales_muertos,
            ci.costo_total_compra, ci.costo_total_flete_entrada,
            ci.costo_total_manutencion, ci.costo_total_flete_salida,
-           COALESCE(ci.costo_total_otros,0) AS costo_total_otros,
            ci.costo_total, ci.ingreso_total_ventas, ci.ganancia_total,
            csd.porcentaje, csd.ganancia AS ganancia_socio,
-           ROUND(ci.costo_total_compra*(csd.porcentaje/100),2)           AS costo_compra_socio,
-           ROUND(ci.costo_total_flete_entrada*(csd.porcentaje/100),2)    AS costo_flete_ent_socio,
-           ROUND(ci.costo_total_manutencion*(csd.porcentaje/100),2)      AS costo_manten_socio,
-           ROUND(ci.costo_total_flete_salida*(csd.porcentaje/100),2)     AS costo_flete_sal_socio,
-           ROUND(COALESCE(ci.costo_total_otros,0)*(csd.porcentaje/100),2) AS costo_otros_socio,
-           ROUND(ci.costo_total*(csd.porcentaje/100),2)                  AS costo_total_socio,
-           ROUND(ci.ingreso_total_ventas*(csd.porcentaje/100),2)         AS ingresos_socio,
+           ROUND(ci.costo_total_compra         *(csd.porcentaje/100),2) AS costo_compra_socio,
+           ROUND(ci.costo_total_flete_entrada  *(csd.porcentaje/100),2) AS costo_flete_ent_socio,
+           ROUND(ci.costo_total_manutencion    *(csd.porcentaje/100),2) AS costo_manten_socio,
+           ROUND(ci.costo_total_flete_salida   *(csd.porcentaje/100),2) AS costo_flete_sal_socio,
+           ROUND((ci.costo_total
+                  - ci.costo_total_compra
+                  - ci.costo_total_flete_entrada
+                  - ci.costo_total_manutencion
+                  - ci.costo_total_flete_salida) *(csd.porcentaje/100),2) AS costo_otros_socio,
+           ROUND(ci.costo_total                *(csd.porcentaje/100),2) AS costo_total_socio,
+           ROUND(ci.ingreso_total_ventas        *(csd.porcentaje/100),2) AS ingresos_socio,
+           (SELECT COALESCE(SUM(la.peso_salida_kg),0)
+            FROM liquidacion_animales la
+            JOIN liquidaciones lq ON lq.id=la.id_liquidacion
+            WHERE lq.id_contrato=cc.id AND la.tipo_salida='venta')       AS peso_vendido_kg,
            t.nombre AS tipo_animal, e.nombre AS empresa
          FROM contrato_socios cs
          JOIN contratos_compra cc ON cc.id=cs.id_contrato
