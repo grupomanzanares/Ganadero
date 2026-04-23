@@ -14,6 +14,7 @@ $id     = (int)input('id', 0, 'GET');
 
 match ($action) {
     'cierre'              => getCierreContrato($id),
+    'lista_cierres'       => getListaCierres(),
     'resumen'             => getResumenGeneral(),
     'estado_contrato'     => getEstadoContrato($id),
     'liquidaciones'       => getReporteLiquidaciones(),
@@ -110,6 +111,83 @@ function getEstadoContrato(int $idContrato): void {
     $data['socios'] = $stmt2->fetchAll();
 
     Response::success($data);
+}
+
+// ── Lista filtrada de cierres (informe ejecutivo) ────────────
+function getListaCierres(): void {
+    $pdo = getDB();
+
+    $fechaDesde = input('fecha_desde', '', 'GET');
+    $fechaHasta = input('fecha_hasta', '', 'GET');
+    $empresa    = (int)input('empresa',     0, 'GET');
+    $tipoAnimal = (int)input('tipo_animal', 0, 'GET');
+    $socio      = (int)input('socio',       0, 'GET');
+    $resultado  = input('resultado', '', 'GET'); // positivo | negativo
+
+    $where  = ['1=1'];
+    $params = [];
+
+    if ($fechaDesde)     { $where[] = 'ci.fecha_cierre >= ?';    $params[] = $fechaDesde; }
+    if ($fechaHasta)     { $where[] = 'ci.fecha_cierre <= ?';    $params[] = $fechaHasta; }
+    if ($empresa > 0)    { $where[] = 'c.id_empresa_compra = ?'; $params[] = $empresa;    }
+    if ($tipoAnimal > 0) { $where[] = 'c.id_tipo_animal = ?';    $params[] = $tipoAnimal; }
+    if ($socio > 0) {
+        $where[]  = 'EXISTS (SELECT 1 FROM contrato_socios cs2 WHERE cs2.id_contrato = c.id AND cs2.id_socio = ?)';
+        $params[] = $socio;
+    }
+    if ($resultado === 'positivo') { $where[] = 'ci.ganancia_total > 0'; }
+    if ($resultado === 'negativo') { $where[] = 'ci.ganancia_total < 0'; }
+
+    $w = implode(' AND ', $where);
+
+    // KPIs agregados
+    $stmtK = $pdo->prepare(
+        "SELECT
+            COUNT(*)                                                    AS total_cierres,
+            COALESCE(SUM(ci.total_animales), 0)                        AS total_animales,
+            COALESCE(SUM(ci.animales_vendidos), 0)                     AS total_vendidos,
+            COALESCE(SUM(ci.animales_muertos), 0)                      AS total_muertos,
+            COALESCE(SUM(ci.costo_total), 0)                           AS total_costos,
+            COALESCE(SUM(ci.ingreso_total_ventas), 0)                  AS total_ingresos,
+            COALESCE(SUM(ci.ganancia_total), 0)                        AS total_ganancia,
+            ROUND(AVG(DATEDIFF(ci.fecha_cierre, c.fecha_compra)), 0)   AS dias_promedio,
+            ROUND(SUM(ci.ganancia_total) / NULLIF(SUM(ci.costo_total), 0) * 100, 2) AS roi_global,
+            SUM(ci.ganancia_total > 0)                                 AS con_ganancia,
+            SUM(ci.ganancia_total < 0)                                 AS con_perdida
+         FROM cierre_contrato ci
+         JOIN contratos_compra c ON c.id = ci.id_contrato
+         WHERE {$w}"
+    );
+    $stmtK->execute($params);
+    $kpis = $stmtK->fetch();
+
+    // Listado con socios concatenados
+    $stmt = $pdo->prepare(
+        "SELECT
+            c.id, c.codigo, c.fecha_compra,
+            ci.id AS id_cierre, ci.fecha_cierre,
+            ci.total_animales, ci.animales_vendidos, ci.animales_muertos,
+            ci.costo_total_compra, ci.costo_total_flete_entrada,
+            ci.costo_total_manutencion, ci.costo_total_flete_salida,
+            ci.costo_total, ci.ingreso_total_ventas, ci.ganancia_total,
+            DATEDIFF(ci.fecha_cierre, c.fecha_compra)                       AS dias_operacion,
+            ROUND(ci.ganancia_total / NULLIF(ci.costo_total, 0) * 100, 2)  AS roi_pct,
+            e.nombre AS empresa,
+            t.nombre AS tipo_animal,
+            GROUP_CONCAT(s.nombre ORDER BY s.nombre SEPARATOR ', ')        AS socios
+         FROM cierre_contrato ci
+         JOIN contratos_compra c  ON c.id  = ci.id_contrato
+         JOIN empresas e          ON e.id  = c.id_empresa_compra
+         JOIN tipos_animal t      ON t.id  = c.id_tipo_animal
+         LEFT JOIN contrato_socios cs ON cs.id_contrato = c.id
+         LEFT JOIN socios s           ON s.id = cs.id_socio
+         WHERE {$w}
+         GROUP BY ci.id
+         ORDER BY ci.fecha_cierre DESC"
+    );
+    $stmt->execute($params);
+
+    Response::success(['kpis' => $kpis, 'lista' => $stmt->fetchAll()]);
 }
 
 // ── Resumen general de todos los contratos ───────────────────
