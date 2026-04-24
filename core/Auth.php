@@ -71,12 +71,13 @@ class Auth {
         }
     }
 
-    /** Aborta con 403 si no tiene permiso (para APIs) */
+    /** Aborta con 401/403 si no hay sesión o no tiene permiso (para APIs) */
     public static function requirePermission(string $modulo, string $accion = 'ver'): void {
+        if (!self::check()) {
+            Response::unauthorized();
+        }
         if (!self::can($modulo, $accion)) {
-            http_response_code(403);
-            echo json_encode(['error' => 'Sin permiso para esta acción.']);
-            exit;
+            Response::forbidden();
         }
     }
 

@@ -11,6 +11,11 @@ const App = (() => {
         headers: { 'Content-Type': 'application/json', ...options.headers },
         ...options,
       });
+      if (res.status === 401) {
+        const base = typeof APP_URL !== 'undefined' ? APP_URL : '';
+        window.location.replace(base + '/login.php?expired=1');
+        return { ok: false, status: 401, data: {} };
+      }
       const json = await res.json();
       return { ok: res.ok, status: res.status, data: json };
     } catch (err) {

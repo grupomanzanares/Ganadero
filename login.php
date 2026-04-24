@@ -90,6 +90,13 @@ if (Auth::check()) {
     <div class="login-body">
       <h2 class="text-slate-800 text-lg font-semibold mb-5">Iniciar sesión</h2>
 
+      <?php if (isset($_GET['expired'])): ?>
+      <div class="mb-4 p-3 rounded-lg text-sm font-medium"
+           style="background:#fffbeb;border:1px solid #fde68a;color:#92400e">
+        Su sesión expiró por inactividad. Por favor inicie sesión nuevamente.
+      </div>
+      <?php endif; ?>
+
       <div id="msg-error"
            class="hidden mb-4 p-3 rounded-lg text-sm font-medium"
            style="background:#fef2f2;border:1px solid #fecaca;color:#dc2626"></div>
