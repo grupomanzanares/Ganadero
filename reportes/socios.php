@@ -61,7 +61,7 @@ require_once __DIR__ . '/../views/layout/header.php';
   </div>
   <div>
     <label class="form-label">Desde</label>
-    <input type="date" id="f-desde" class="input-base w-36" value="<?= date('Y-01-01') ?>">
+    <input type="date" id="f-desde" class="input-base w-36" value="2025-01-01">
   </div>
   <div>
     <label class="form-label">Hasta</label>
@@ -124,7 +124,7 @@ require_once __DIR__ . '/../views/layout/header.php';
   <!-- KPIs financieros -->
   <div>
     <p class="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">💰 Posición financiera</p>
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3" id="kpi-fin"></div>
+    <div class="grid grid-cols-2 lg:grid-cols-5 gap-3" id="kpi-fin"></div>
   </div>
 
   <!-- Gráficos fila 1 -->
@@ -386,9 +386,13 @@ function renderKpis() {
   const rent  = costo>0?((gan/costo)*100).toFixed(1)+'%':'—';
   const margen= venta>0?((gan/venta)*100).toFixed(1)+'%':'—';
 
+  const invAnim = parseFloat(d.inversion_animales_activos)||0;
+
   const kpis_fin = [
     { lbl:'Inversión activa', val:App.moneda(inver), ac:C.azul,
       sub:'valor nominal contratos abiertos' },
+    { lbl:'Inv. animales activos', val:App.moneda(invAnim), ac:'#0284c7',
+      sub:'costo compra + flete de animales en campo' },
     { lbl:'Ingresos ventas',  val:App.moneda(venta), ac:C.morado,
       sub:`${App.moneda(ventaCerrado)} cerrados · ${App.moneda(ventaParcial)} parciales` },
     { lbl:'Costos totales',   val:App.moneda(costo), ac:C.amber,

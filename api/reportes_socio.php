@@ -138,6 +138,21 @@ function getResumenSocio(int $id, string $desde, string $hasta, string $estado):
     $r4->execute($pAb);
     $inversion = (float)$r4->fetchColumn();
 
+    // Inversión en animales ACTIVOS (costo compra + flete por animal individual)
+    $filtAct = ['cs.id_socio=?', "a.estado='activo'"];
+    $pAct    = [$id];
+    if ($desde) { $filtAct[] = 'cc.fecha_compra >= ?'; $pAct[] = $desde; }
+    if ($hasta) { $filtAct[] = 'cc.fecha_compra <= ?'; $pAct[] = $hasta; }
+    $r6 = $pdo->prepare(
+        'SELECT COALESCE(SUM((a.costo_compra_animal + a.costo_flete_animal) * (cs.porcentaje/100)), 0)
+         FROM contrato_socios cs
+         JOIN contratos_compra cc ON cc.id = cs.id_contrato
+         JOIN animales a ON a.id_contrato = cc.id
+         WHERE ' . implode(' AND ', $filtAct)
+    );
+    $r6->execute($pAct);
+    $inversionAnimales = (float)$r6->fetchColumn();
+
     // Financiero parcial — contratos ABIERTOS con liquidaciones realizadas
     $filtAb2 = ['cs.id_socio=?', "cc.estado='abierto'"];
     $pAb2    = [$id];
@@ -165,7 +180,8 @@ function getResumenSocio(int $id, string $desde, string $hasta, string $estado):
         'ganancia_total'     => (float)$fin['ganancia_total'],
         'costo_total'        => (float)$fin['costo_total'],
         'ingresos_ventas'    => (float)$fin['ingresos_ventas'],
-        'inversion_activa'   => $inversion,
+        'inversion_activa'        => $inversion,
+        'inversion_animales_activos' => $inversionAnimales,
         // Datos de contratos ABIERTOS con liquidaciones parciales
         'costos_parciales'   => (float)$parcial['costos_parciales'],
         'ingresos_parciales' => (float)$parcial['ingresos_parciales'],
