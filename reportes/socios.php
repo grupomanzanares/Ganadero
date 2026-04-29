@@ -201,6 +201,7 @@ require_once __DIR__ . '/../views/layout/header.php';
       <table class="tr w-full">
         <thead><tr>
           <th>Código</th><th>Contrato</th><th>Tipo</th>
+          <th class="text-center">Part.</th>
           <th class="text-right">Peso finca</th>
           <th class="text-right">Costo compra</th>
           <th class="text-right">$/kg ingreso</th>
@@ -459,8 +460,10 @@ function renderTablas() {
       </tr>`;
   }
 
-  // Animales activos
-  const anim = DATOS.animales;
+  // Animales activos — ordenados de más antiguo a más nuevo
+  const anim = [...(DATOS.animales||[])].sort((a, b) =>
+    new Date(a.fecha_compra) - new Date(b.fecha_compra)
+  );
   document.getElementById('badge-anim').textContent = anim.length + ' animal(es)';
   const hoy = new Date();
   document.getElementById('tb-anim').innerHTML = anim.length
@@ -468,11 +471,14 @@ function renderTablas() {
         const fcmp = new Date(a.fecha_compra);
         const dias = Math.round((hoy-fcmp)/86400000);
         const mant = App.moneda(Math.round((dias/(365/12))*11518));
+        const pct    = parseFloat(a.porcentaje||0).toFixed(0);
+        const pctCls = pct == 100 ? 'b b-g' : 'b b-s';
         return `<tr>
           <td class="font-mono font-semibold">${a.codigo||'<span class="text-slate-300 italic text-xs">—</span>'}</td>
           <td><a href="${APP_URL}/contratos/detalle.php?id=${a.id_contrato}"
                  class="text-esm-600 hover:underline text-xs font-mono">${a.contrato_codigo}</a></td>
           <td class="text-slate-500">${a.tipo_animal}</td>
+          <td class="text-center"><span class="${pctCls}">${pct}%</span></td>
           <td class="text-right">${a.peso_finca_kg?App.kg(a.peso_finca_kg):'<span class="text-slate-300">—</span>'}</td>
           <td class="text-right">${App.moneda(a.costo_compra_animal)}</td>
           <td class="text-right font-medium">${a.valor_promedio_kg?App.moneda(a.valor_promedio_kg)+'/kg':'—'}</td>
@@ -481,7 +487,7 @@ function renderTablas() {
           <td class="text-right text-amber-600">${mant}</td>
         </tr>`;
       }).join('')
-    : '<tr><td colspan="9" class="text-center py-6 text-slate-400">Sin animales activos</td></tr>';
+    : '<tr><td colspan="10" class="text-center py-6 text-slate-400">Sin animales activos</td></tr>';
 }
 
 // ════════════════════════════════════════════════════
@@ -811,12 +817,14 @@ function exportarCSVAnimales() {
   const a = DATOS.animales||[];
   if (!a.length) { App.toast('Sin animales activos.','warning'); return; }
   const hoy = Date.now();
-  const cab = ['Código','Contrato','Tipo','Empresa','Peso finca kg','Costo compra',
+  const cab = ['Código','Contrato','Tipo','Empresa','Part%','Peso finca kg','Costo compra',
                '$/kg ingreso','Fecha compra','Días campo','Manutención est.'];
-  const fil = a.map(x => {
+  const aSorted = [...a].sort((x,y) => new Date(x.fecha_compra) - new Date(y.fecha_compra));
+  const fil = aSorted.map(x => {
     const dias = Math.max(0, Math.round((hoy - new Date(x.fecha_compra).getTime()) / 86400000));
     const mant = Math.round((dias/(365/12))*11518);
     return [x.codigo||'', x.contrato_codigo, x.tipo_animal, x.empresa,
+            parseFloat(x.porcentaje||0).toFixed(0),
             parseFloat(x.peso_finca_kg||0).toFixed(2),
             parseFloat(x.costo_compra_animal||0).toFixed(0),
             x.valor_promedio_kg ? parseFloat(x.valor_promedio_kg).toFixed(0) : '',

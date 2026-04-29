@@ -355,7 +355,9 @@ function renderInventario(inv, estadoF) {
     return;
   }
 
-  wrap.innerHTML = Object.values(grupos).map(g => {
+  const sortedGrupos = Object.values(grupos).sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+  wrap.innerHTML = sortedGrupos.map(g => {
     const activos  = g.animales.length; // todos son activos en este tab
     const bEst     = g.estado==='abierto'
       ? '<span class="bd bd-g">Abierto</span>'
@@ -380,8 +382,12 @@ function renderInventario(inv, estadoF) {
       totCostoAcum += costoAcum;
       totMant      += mant;
 
+      const pctAnimal = parseFloat(a.porcentaje||0).toFixed(0);
+      const pctCls    = pctAnimal == 100 ? 'bd bd-g' : 'bd bd-am';
+
       return `<tr>
         <td class="font-mono font-semibold text-xs">${a.animal_codigo||('<span class="text-slate-300 italic">#'+a.id_animal+'</span>')}</td>
+        <td class="text-center"><span class="${pctCls}">${pctAnimal}%</span></td>
         <td class="text-right">${a.peso_inicial_kg ? App.kg(a.peso_inicial_kg) : '—'}</td>
         <td class="text-right">${a.peso_finca_kg   ? App.kg(a.peso_finca_kg)   : '—'}</td>
         <td class="text-right font-semibold text-slate-700">${dias}</td>
@@ -418,6 +424,7 @@ function renderInventario(inv, estadoF) {
           <table class="t2">
             <thead><tr>
               <th>Código</th>
+              <th class="text-center">Part.</th>
               <th class="text-right">Peso inicial</th>
               <th class="text-right">Peso finca</th>
               <th class="text-right">Días campo</th>
@@ -429,7 +436,7 @@ function renderInventario(inv, estadoF) {
             </tr></thead>
             <tbody>${rows}</tbody>
             <tfoot><tr>
-              <td colspan="3">TOTALES — ${g.animales.length} animales activos</td>
+              <td colspan="4">TOTALES — ${g.animales.length} animales activos</td>
               <td></td>
               <td></td>
               <td></td>
@@ -605,7 +612,7 @@ function exportarCSV() {
   const activos = INV.filter(a => a.animal_estado === 'activo');
   if (!activos.length) { App.toast('Sin animales activos para exportar.','warning'); return; }
   const hoy = Date.now();
-  const cab = ['Contrato','Empresa','Tipo','Fecha compra','Estado contrato','Part%',
+  const cab = ['Contrato','Empresa','Tipo','Fecha compra','Estado contrato','Part% contrato','Part% animal',
                'Código animal','Peso inicial kg','Peso finca kg','Días campo',
                'Costo compra','Flete entrada','Manutención est.','Costo acum. est.','$/kg ingreso'];
 
@@ -615,7 +622,7 @@ function exportarCSV() {
     const costoAcum = parseFloat(a.costo_compra_animal||0) + parseFloat(a.costo_flete_animal||0) + mant;
     return [
       a.contrato_codigo, a.empresa, a.tipo_animal, a.fecha_compra, a.contrato_estado,
-      a.porcentaje, a.animal_codigo||'',
+      a.porcentaje, a.porcentaje, a.animal_codigo||'',
       a.peso_inicial_kg||'', a.peso_finca_kg||'', dias,
       parseFloat(a.costo_compra_animal||0).toFixed(0),
       parseFloat(a.costo_flete_animal||0).toFixed(0),
@@ -638,7 +645,7 @@ function exportarExcel() {
 
   // Hoja 1: Inventario
   const activos = INV.filter(a => a.animal_estado === 'activo');
-  const hdrInv = ['Contrato','Empresa','Tipo','Fecha compra','Estado contrato','Part%',
+  const hdrInv = ['Contrato','Empresa','Tipo','Fecha compra','Estado contrato','Part% contrato','Part% animal',
                   'Código animal','Peso inicial kg','Peso finca kg','Días campo',
                   'Costo compra','Flete entrada','Manutención est.','Costo acum. est.','$/kg ingreso'];
   const dataInv = activos.map(a => {
@@ -646,7 +653,7 @@ function exportarExcel() {
     const mant = Math.round((dias/(365/12))*11518);
     const costoAcum = parseFloat(a.costo_compra_animal||0) + parseFloat(a.costo_flete_animal||0) + mant;
     return [a.contrato_codigo, a.empresa, a.tipo_animal, a.fecha_compra, a.contrato_estado,
-            parseFloat(a.porcentaje), a.animal_codigo||'',
+            parseFloat(a.porcentaje), parseFloat(a.porcentaje), a.animal_codigo||'',
             parseFloat(a.peso_inicial_kg||0), parseFloat(a.peso_finca_kg||0), dias,
             parseFloat(a.costo_compra_animal||0), parseFloat(a.costo_flete_animal||0),
             parseFloat(mant), parseFloat(costoAcum.toFixed(0)),
